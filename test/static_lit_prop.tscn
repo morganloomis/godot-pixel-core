@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://bck007dyh58ae"]
+
+[ext_resource type="Script" uid="uid://cqn8w1m4rk2uf" path="res://test/static_lit_prop.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://pvxyrn4b64y1" path="res://addons/godot-pixel-core/entity/animated_entity.tscn" id="2_anim"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_prop"]
+size = Vector2(24, 16)
+
+[node name="StaticLitProp" type="StaticBody2D"]
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 8)
+shape = SubResource("RectangleShape2D_prop")
+
+[node name="AnimatedEntity" parent="." instance=ExtResource("2_anim")]
+position = Vector2(0, -16)
+entity_name = "player"
+use_2d_normal_lighting = true

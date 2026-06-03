@@ -1,0 +1,9 @@
+# Normalize line endings for text files
+* text=auto eol=lf
+
+# Exclude from git archive (e.g. Asset Library download ZIP)
+# so the addon tarball doesn't include dev-only content
+test/ export-ignore
+openspec/ export-ignore
+.cursor/ export-ignore
+docs/ export-ignore

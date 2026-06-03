@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://cnhafqnc6pw3b"]
+
+[ext_resource type="Script" uid="uid://dvintybjls2yd" path="res://test/test_scene.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://p1ay3rent1ty" path="res://addons/godot-pixel-core/entity/player_entity.tscn" id="2_player"]
+
+[node name="TestScene" type="Node2D" unique_id=1580721948]
+script = ExtResource("1_script")
+
+[node name="DirectionalLight2D" type="DirectionalLight2D" parent="." unique_id=511186250]
+rotation = 0.7853982
+height = 0.85
+max_distance = 9889.0
+
+[node name="PlayerEntity" parent="." unique_id=478582486 instance=ExtResource("2_player")]
+frame_rate = 24.0
+
+[node name="Camera2D" type="Camera2D" parent="PlayerEntity" unique_id=335075510]
+
+[node name="CanvasModulate" type="CanvasModulate" parent="." unique_id=1000387990]
+color = Color(0.10747976, 0.10747973, 0.10747973, 1)

@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://p1ay3rent1ty"]
+
+[ext_resource type="Script" uid="uid://c2qw2dknvms47" path="res://addons/godot-pixel-core/entity/player_entity.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://pvxyrn4b64y1" path="res://addons/godot-pixel-core/entity/animated_entity.tscn" id="2_anim"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_1"]
+radius = 8.0
+height = 32.0
+
+[node name="PlayerEntity" type="CharacterBody2D" unique_id=456474850]
+script = ExtResource("1_script")
+entity_name = "player"
+
+[node name="AnimatedEntity" parent="." unique_id=358252840 instance=ExtResource("2_anim")]
+entity_name = "player"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=819986215]
+shape = SubResource("CapsuleShape2D_1")

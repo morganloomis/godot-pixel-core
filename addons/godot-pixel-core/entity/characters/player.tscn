@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://tk0swuewi3xl"]
+
+[ext_resource type="PackedScene" uid="uid://p1ay3rent1ty" path="res://addons/godot-pixel-core/entity/player_entity.tscn" id="1_player"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_76oj4"]
+radius = 7.0
+height = 48.0
+
+[node name="player" unique_id=1365215088 instance=ExtResource("1_player")]
+entity_name = "player"
+movement_speed = 35.0
+frame_rate = 18.0
+
+[node name="CollisionShape2D" parent="."]
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_76oj4")
