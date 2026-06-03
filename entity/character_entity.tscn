@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3 uid="uid://c8r4ct3rent1ty"]
+
+[ext_resource type="Script" path="res://addons/godot-pixel-core/entity/character_entity.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://pvxyrn4b64y1" path="res://addons/godot-pixel-core/entity/animated_entity.tscn" id="2_anim"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_1"]
+radius = 8.0
+height = 32.0
+
+[node name="CharacterEntity" type="CharacterBody2D"]
+script = ExtResource("1_script")
+
+[node name="AnimatedEntity" parent="." instance=ExtResource("2_anim")]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CapsuleShape2D_1")
