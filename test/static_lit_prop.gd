@@ -11,7 +11,7 @@ extends StaticBody2D
 func _ready() -> void:
 	_presenter.sprite_lookup.animated_sheet_root = "res://test/art/sprite/"
 	_presenter.action = "idle"
-	_presenter.direction = "SE"
+	_presenter.set_direction("SE")
 	_presenter.frame = 0
 	if Engine.is_editor_hint():
 		_presenter.refresh_editor_sprite_preview()

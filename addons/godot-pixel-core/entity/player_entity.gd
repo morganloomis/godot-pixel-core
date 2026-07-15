@@ -19,7 +19,7 @@ func _physics_process(_delta: float) -> void:
 		animated_entity.set_action(new_action)
 
 	if input_direction.length_squared() > 0.001:
-		animated_entity.direction = _vector_to_direction(input_direction)
+		animated_entity.set_direction(_vector_to_direction(input_direction))
 
 
 func _vector_to_direction(v: Vector2) -> String:

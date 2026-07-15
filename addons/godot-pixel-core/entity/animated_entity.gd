@@ -52,7 +52,14 @@ var _use_2d_normal_lighting: bool = false
 @onready var animation_timer: Timer = $Timer
 
 var action: String = "idle"
-var direction: String = "SE"
+var _displayed_direction: String = "SE"
+var _target_direction: String = "SE"
+var _transition_step: int = 0
+var direction: String:
+	get:
+		return _displayed_direction
+	set(value):
+		set_direction(value)
 var _frame: int = 0
 var frame: int:
 	get:
@@ -259,6 +266,81 @@ func _on_animation_timeout() -> void:
 	else:
 		_frame += 1
 		update_sprite()
+	_advance_direction_transition()
+
+
+func _normalize_direction(direction_name: String) -> String:
+	var idx := SpriteSheetLookupBase.DIRECTIONS.find(direction_name)
+	return SpriteSheetLookupBase.DIRECTIONS[0] if idx < 0 else direction_name
+
+
+func _direction_to_index(direction_name: String) -> int:
+	var idx := SpriteSheetLookupBase.DIRECTIONS.find(direction_name)
+	return idx if idx >= 0 else 0
+
+
+func _index_to_direction(index: int) -> String:
+	return SpriteSheetLookupBase.DIRECTIONS[posmod(index, 8)]
+
+
+func _ring_distance(from_index: int, to_index: int) -> int:
+	var cw := (to_index - from_index + 8) % 8
+	var ccw := (from_index - to_index + 8) % 8
+	return mini(cw, ccw)
+
+
+func _compute_transition_step(from_index: int, to_index: int) -> int:
+	if from_index == to_index:
+		return 0
+	var dist := _ring_distance(from_index, to_index)
+	if dist <= 1:
+		return 0
+	var cw := (to_index - from_index + 8) % 8
+	var ccw := (from_index - to_index + 8) % 8
+	if cw < ccw:
+		return 1
+	if ccw < cw:
+		return -1
+	return 1 if randi() % 2 == 0 else -1
+
+
+func set_direction(new_direction: String) -> void:
+	var target := _normalize_direction(new_direction)
+	if Engine.is_editor_hint():
+		_displayed_direction = target
+		_target_direction = target
+		_transition_step = 0
+		refresh_editor_sprite_preview()
+		return
+	var from_index := _direction_to_index(_displayed_direction)
+	var to_index := _direction_to_index(target)
+	var dist := _ring_distance(from_index, to_index)
+	if dist == 0:
+		return
+	if target == _target_direction and _transition_step != 0:
+		return
+	_target_direction = target
+	if dist == 1:
+		_displayed_direction = target
+		_transition_step = 0
+		update_sprite()
+		return
+	_transition_step = _compute_transition_step(from_index, to_index)
+
+
+func _advance_direction_transition() -> void:
+	if _transition_step == 0:
+		return
+	var from_index := _direction_to_index(_displayed_direction)
+	var to_index := _direction_to_index(_target_direction)
+	if from_index == to_index:
+		_transition_step = 0
+		return
+	var next_index := (from_index + _transition_step + 8) % 8
+	_displayed_direction = _index_to_direction(next_index)
+	if next_index == to_index:
+		_transition_step = 0
+	update_sprite()
 
 ## Call when changing action: resets frame to 0 and restarts the timer if it was stopped by a one-shot clip.
 func set_action(new_action: String) -> void:
