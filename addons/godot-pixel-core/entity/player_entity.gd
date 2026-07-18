@@ -11,18 +11,13 @@ func _physics_process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	var input_direction := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-	velocity = input_direction * speed
+	var move_dir := remap_input_to_screen(input_direction)
+	velocity = move_dir * speed
 	move_and_slide()
 
-	var new_action: String = "walk" if input_direction.length_squared() > 0.001 else "idle"
+	var new_action: String = "walk" if move_dir.length_squared() > 0.001 else "idle"
 	if animated_entity.action != new_action:
 		animated_entity.set_action(new_action)
 
-	if input_direction.length_squared() > 0.001:
-		animated_entity.set_direction(_vector_to_direction(input_direction))
-
-
-func _vector_to_direction(v: Vector2) -> String:
-	var rot := fposmod(PI / 2.0 - v.angle(), TAU)
-	var idx := int(round(rot / (PI / 4.0))) % 8
-	return SpriteSheetLookupBase.DIRECTIONS[idx]
+	if move_dir.length_squared() > 0.001:
+		animated_entity.set_direction(_vector_to_direction(move_dir))
