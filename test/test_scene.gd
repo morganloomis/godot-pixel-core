@@ -10,6 +10,10 @@ extends Node2D
 
 
 func _ready() -> void:
+	# Ambient replaces the CanvasModulate this scene used to carry: CanvasModulate multiplies
+	# everything including emissive, which would stop emissive being the literal screen colour.
+	IsoLightingConfig.ensure_globals()
+	IsoLightingConfig.set_ambient(Color(0.10, 0.11, 0.16), 1.0)
 	var presenter: AnimatedEntity = $PlayerEntity/AnimatedEntity
 	presenter.sprite_lookup.animated_sheet_root = "res://test/art/sprite/"
 	presenter.use_2d_normal_lighting = true

@@ -35,29 +35,30 @@ graph TD
 		SpriteSheetLookupBase --> AnimatedSpriteSheetLookup
 		SpriteSheetLookupBase --> StaticSpriteSheetLookup
 		SpriteSheetLookupBase --> TileSpriteSheetLookup
-		RC --> TileLitMaterialFactory
+		RC --> IsoLitMaterialFactory
+		RC --> IsoLightingConfig
 	end
 ```
 
 In prose (for viewers that don't render Mermaid):
 
 - **Scene-node classes**: `AnimatedEntity` extends Godot's `Node2D`; `CharacterEntity` extends `CharacterBody2D`; `PlayerEntity` extends `CharacterEntity`; `LitTileMapLayer` extends `TileMapLayer`.
-- **`RefCounted` helpers**: `SpriteSheetLookupBase` extends `RefCounted`, and `AnimatedSpriteSheetLookup`, `StaticSpriteSheetLookup`, and `TileSpriteSheetLookup` all extend `SpriteSheetLookupBase`. `TileLitMaterialFactory` extends `RefCounted` directly.
+- **`RefCounted` helpers**: `SpriteSheetLookupBase` extends `RefCounted`, and `AnimatedSpriteSheetLookup`, `StaticSpriteSheetLookup`, and `TileSpriteSheetLookup` all extend `SpriteSheetLookupBase`. `IsoLitMaterialFactory` and `IsoLightingConfig` extend `RefCounted` directly.
 
 **Composition, not inheritance.** `CharacterEntity` (and therefore `PlayerEntity`) **contains** a child `AnimatedEntity` in its scene — that's composition, and is intentionally **not** drawn as an arrow in the chart above. See the [Architecture: body vs presentation](#architecture-body-vs-presentation) section for why body and presenter are kept separate.
 
-**Legacy bundle.** `addons/godot-pixel-core/lighting/legacy/sprite_lighting.gd` extends `Node`, has **no `class_name`**, and loads only when a project manually autoloads it. It is intentionally outside this chart; see [Legacy pseudo-lighting (`lighting/legacy/`)](#legacy-pseudo-lighting-lightinglegacy) below.
+**Legacy bundle.** The old `lighting/legacy/` pseudo-lighting bundle (unshaded `sprite_lit.gdshader` plus a `SpriteLighting` autoload fanning uniforms out to every material each frame) has been removed. Project-wide values are **global shader parameters** now, so nothing needs to push them per frame.
 
 ## Features
 
 - **Sprite sheet lookup** — `SpriteSheetLookupBase`, `AnimatedSpriteSheetLookup`, `StaticSpriteSheetLookup`, and **`TileSpriteSheetLookup`** (per-pass tile atlases under `tile_sheet_root`) for loading and caching texture regions from layout conventions
-- **Animated entity (presenter)** — Base for sprite-sheet display with action, direction, and frame advance; export **`entity_name`** for the sprite set folder under `res://sprite/animated/` (if empty, the presenter node’s name is used). Export **`use_2d_normal_lighting`** so the child **`Sprite2D.texture`** is a **`CanvasTexture`** (diffuse + normal slots filled from **`diffuse.png` / `normal.png`** each **`update_sprite`**, cells baked to **`ImageTexture`** for engine compatibility), **nearest** filtering, and a **`CanvasItemMaterial`** that **receives** scene **`DirectionalLight2D` / `PointLight2D`**
+- **Animated entity (presenter)** — Base for sprite-sheet display with action, direction, and frame advance; export **`entity_name`** for the sprite set folder under `res://sprite/animated/` (if empty, the presenter node’s name is used). Export **`use_2d_normal_lighting`** so the child **`Sprite2D`** gets the **`iso_lit.gdshader`** material: whole pass sheets are bound **once per action** and the current cell is picked by a region uniform, so nothing is baked per frame. **Nearest** filtering, and it **receives** scene **`DirectionalLight2D` / `PointLight2D`**
 - **Editor viewport preview** — In the editor, the presenter shows a **static diffuse-only** placeholder (tries **`idle`**, else first valid action in **A→Z** order; cell **S**, frame **0**). If sheet files change **on disk** but **`entity_name`** is unchanged, the preview may not update until you nudge **`entity_name`** or reload the scene.
 - **Engine 2D lighting** — No autoload: add light nodes to your scene (and optional **`CanvasModulate`** for overall ambient tone). See **`test/test_scene.tscn`** for a minimal setup
 - **Character entity** — Moving, collidable entities with gameplay attributes; delegates display to animated entity; re-exports **`entity_name`** on the body so you set the sprite set id next to health and speed
 - **Player entity** — Player-controlled character that reads input and drives movement, action, and direction
 - **Character scenes** — `player_entity.tscn` is the canonical player; enable **`use_2d_normal_lighting`** on the child presenter when you want normal-mapped 2D lighting. Optional preset: `entity/characters/player.tscn` instances the same player scene with tuned collision and sprite offsets. For a static collider + presenter demo, see **`test/static_lit_prop.tscn`**
-- **Lit tile maps** — **`LitTileMapLayer`** extends **`TileMapLayer`** with **`use_2d_normal_lighting`**: dual-atlas shader (`lighting/tile_lit.gdshader`), **`normal.png`** beside **`diffuse.png`**, flat normal if the normal atlas is missing. See **`main.tscn`** in this repo and **`test/art/tile/`** for a sample set
+- **Lit tile maps** — **`LitTileMapLayer`** extends **`TileMapLayer`** with **`use_2d_normal_lighting`**: the same **`iso_lit.gdshader`** as sprites, reading pass atlases beside **`diffuse.png`**, with world-up fallbacks when a pass is missing. See **`main.tscn`** in this repo and **`test/art/tile/`** for a sample set
 
 ## Animated sheet layout (per-pass files)
 
@@ -66,9 +67,11 @@ Under **`{animated_sheet_root}/{entity}/{action}/`**, use optional PNGs:
 | File | Role |
 |------|------|
 | **`diffuse.png`** | Required for a valid animated action. **8 direction rows** (S, SE, E, NE, N, NW, W, SW — top to bottom) × **N columns** (frames). Frame count and cell size are taken from this file. |
-| **`normal.png`** | Optional; same grid as diffuse. Used with engine 2D lighting (`CanvasTexture` normal slot). If missing, lit mode uses a flat normal. |
-| **`specular.png`** | Optional; same grid. Loaded and cached when present for future/custom shading (not assigned to stock `CanvasTexture` in the default lit path). |
-| **`occlusion.png`** | Optional; same grid. Same as specular for future use. |
+| **`normal.png`** | Optional; same grid. **World-space** normal, RGB in `[0,1]` → `[-1,1]`. If missing, sprites fall back to a camera-facing normal and tile layers to world up. |
+| **`height.png`** | Optional; same grid. **R channel = height above the ground plane, 1 step = 1 pixel.** This is what makes lights orbit objects instead of sliding up and down them. If missing, everything is treated as lying flat on the ground. |
+| **`specular.png`** | Optional; same grid. **R channel = grayscale highlight intensity.** Tightness is the project-wide `iso_specular_shininess`. |
+| **`emissive.png`** | Optional; same grid. RGB is the **literal on-screen colour**: emissive pixels take no light and ignore ambient, so black means "not emissive". |
+| **`occlusion.png`** | Optional; same grid. R channel multiplies **ambient only**, which is what ambient occlusion is for. |
 
 Resolve regions with `AnimatedSpriteSheetLookup.get_texture(entity, action, direction, frame, SpriteSheetPass.DIFFUSE)` (or `SpriteSheetPass.NORMAL`, etc.).
 
@@ -82,7 +85,22 @@ To smooth logical action changes (e.g. idle → walk), you may add an **optional
 - **Missing folder** — if no `{from}-{to}` folder exists, the presenter switches to the target action immediately (same as before this feature).
 - **Interrupt** — if `set_action` is called again while a bridge is playing, the bridge is abandoned and the new action starts immediately (no `{partial_bridge}-{new}` lookup).
 
-**Normal encoding** (for engine 2D lighting and for the **legacy** shader): tangent-style RGB in **[0,1]**, mapped to **[-1,1]** with fixed basis **+X right, +Y up, +Z out of the sprite plane** (toward the viewer). Match Godot’s expected normal map orientation for the **`CanvasTexture`** normal slot. If you use the **legacy** bundle and your art’s green channel is inverted, set **`normal_y_flip`** to **-1** on the duplicated **`lighting/legacy/sprite_lit_material.tres`**.
+**Normal encoding**: **world space**, **Z up**, unit length, **linearly encoded** (no sRGB transfer — normals are data, not colour). RGB in **[0,1]** maps to **[-1,1]**.
+
+This is deliberately *not* Godot's stock 2D normal convention, and the shader writes **`NORMAL`** directly rather than **`NORMAL_MAP`** because of it. The stock path flips green and rebuilds `z = sqrt(max(0, 1 - dot(xy, xy)))`, which misreads world-space data and clamps away the back-facing normals rim lighting depends on.
+
+The payoff: world space is camera-independent, so **camera angle is a runtime knob rather than a re-render**. `IsoLightingConfig.set_camera(yaw, elevation)` re-lights every existing sheet.
+
+**Import settings matter** for `normal.png` and `height.png` — both carry data, not pictures:
+
+| Setting | Required | Why |
+|---|---|---|
+| `compress/mode` | Lossless | Lossy or VRAM compression destroys normals and heights. |
+| `detect_3d/compress_to` | Disabled | Otherwise touching the texture from 3D silently re-imports it VRAM-compressed and ruins it with no visible cause. |
+| `mipmaps/generate` | Off | Averaged normals and heights are meaningless. |
+| `process/premult_alpha` | Off | Would multiply the data by alpha. |
+
+Sampling is **nearest** so normals never interpolate across a silhouette edge.
 
 In **debug** builds, if an optional pass exists but its image size does not match `diffuse.png`, a warning is printed.
 
@@ -110,32 +128,47 @@ Tile art uses the **same pass filenames** as animated actions (`diffuse.png`, `n
 ### Lit tiles (engine 2D lighting)
 
 1. Use a **`LitTileMapLayer`** (script: **`tile_map/lit_tile_map_layer.gd`**) instead of a plain **`TileMapLayer`**, or attach that script to your layer node.
-2. Enable **`use_2d_normal_lighting`**. The layer gets a **`ShaderMaterial`** from **`TileLitMaterialFactory`** (preset **`lighting/tile_lit_material.tres`**, shader **`lighting/tile_lit.gdshader`**): **diffuse** comes from Godot’s tile draw path (**`TEXTURE` / `UV`**); **normals** come from a **second full atlas** uniform with the **same UVs**, so each painted cell picks matching texels from **`normal.png`**.
+2. Enable **`use_2d_normal_lighting`**. The layer gets a **`ShaderMaterial`** from **`IsoLitMaterialFactory`** (shader **`lighting/iso_lit.gdshader`** — the same one sprites use): **diffuse** comes from Godot's tile draw path (**`TEXTURE` / `UV`**); the other passes come from **full atlas** uniforms with the **same UVs**, so each painted cell picks matching texels.
 3. **`texture_filter`** is set to **nearest** while lit mode is on.
-4. **`tile_set_id`**: if empty at runtime, the addon takes the **parent directory name** of the first **`TileSetAtlasSource`** texture’s **`resource_path`** (e.g. `res://art/tile/paver/diffuse.png` → **`paver`**). You can set **`tile_set_id`** explicitly instead.
-5. **`tile_sheet_root_override`**: when non-empty and you are not passing a custom **`tile_sheet_lookup`**, this string replaces the default **`res://art/tile/`** when resolving **`normal.png`**.
+4. **`tile_set_id`**: if empty at runtime, the addon takes the **parent directory name** of the first **`TileSetAtlasSource`** texture's **`resource_path`** (e.g. `res://art/tile/paver/diffuse.png` → **`paver`**). A **`CanvasTexture`** wrapper is unwrapped to the diffuse it carries. You can set **`tile_set_id`** explicitly instead.
+5. **`tile_sheet_root_override`**: when non-empty and you are not passing a custom **`tile_sheet_lookup`**, this string replaces the default **`res://art/tile/`** when resolving pass files.
 6. **`normal_map_texture_path`**: optional explicit **`res://`** path to the normal atlas; when set and the file exists, it overrides **`{tile_sheet_root}/{tile_set_id}/normal.png`**.
-7. If **`normal.png`** (and override) is absent, **`TileLitMaterialFactory`** binds a **1×1 flat normal** (same spirit as lit sprites without a normal pass) so lighting still runs.
+7. Missing passes bind **1×1 fallbacks**, so lighting still runs. A tile layer's fallback normal is **world up**, which is the correct normal for a floor.
 
-Add the same **`DirectionalLight2D` / `PointLight2D`** (and optional **`CanvasModulate`**) as for characters. A minimal demo lives in **`main.tscn`** (lit layer + **`test/art/tile/paver/`** with **`diffuse.png`** / **`normal.png`**).
+Add the same **`DirectionalLight2D` / `PointLight2D`** as for characters. A minimal demo lives in **`main.tscn`**.
 
 ## Engine 2D lighting setup (default lit path)
 
-1. On **`AnimatedEntity`**, enable **`use_2d_normal_lighting`**. The presenter sets **`Sprite2D.texture`** to a **`CanvasTexture`** whose diffuse and normal slots match the current lookup cell every **`update_sprite`**, with **nearest** filtering on the bundle.
-2. Add **`DirectionalLight2D`** and/or **`PointLight2D`** (and other supported 2D lights) under the same **`CanvasLayer`** / world as the sprite so they affect the presenter.
-3. Tune overall brightness with **`CanvasModulate`** (or environment / project defaults) so normals read clearly—fully white modulate can look flat.
-4. Keep project **canvas texture filter** = **nearest** for pixel art (`textures/canvas_textures/default_texture_filter` in project settings); the presenter forces nearest on the child sprite while lit mode is on.
-5. For **tile layers**, follow [Tile sets and lit TileMapLayer](#tile-sets-and-lit-tilemaplayer): enable **`use_2d_normal_lighting`** on **`LitTileMapLayer`** and align normal atlases with diffuse.
+1. On **`AnimatedEntity`**, enable **`use_2d_normal_lighting`**. The presenter assigns the **`iso_lit.gdshader`** material, binds the action's pass sheets once, and writes only the cell region per frame.
+2. Add **`DirectionalLight2D`** and/or **`PointLight2D`** under the same **`CanvasLayer`** / world as the sprite.
+3. Set ambient with **`IsoLightingConfig.set_ambient(color, energy)`** — **not** a **`CanvasModulate`** (see below).
+4. Keep project **canvas texture filter** = **nearest** for pixel art (`textures/canvas_textures/default_texture_filter`); the presenter forces nearest on the child sprite while lit mode is on.
+5. For **tile layers**, follow [Lit tiles](#lit-tiles-engine-2d-lighting) above.
 
-**Rendering:** This addon targets **Godot 4.x** with **GL Compatibility** where relevant; behavior of normals + lights can vary slightly by renderer—verify in your target configuration.
+### Placing lights
 
-## Legacy pseudo-lighting (`lighting/legacy/`)
+> Put a light node at the screen position of the point **directly below it on the ground**, and set **`height`** to its height above that ground, **in pixels**.
 
-The previous approach—custom **`sprite_lit.gdshader`** in **unshaded** mode, duplicated **`sprite_lit_material.tres`**, and optional **`sprite_lighting.gd`** pushing per-material uniforms each frame—is **kept under** **`addons/godot-pixel-core/lighting/legacy/`** for reference and manual rollback only.
+This **redefines Godot's `height`** from "out of the screen" to "world up", and it is what lets `LIGHT_POSITION` be read as a real 3D position. Existing scenes' lights will mean something different after this change — re-place them.
 
-- **Not autoloaded** in the stock demo project.
-- To experiment with it: duplicate **`lighting/legacy/sprite_lit_material.tres`**, assign to a **`Sprite2D`**, add **`lighting/legacy/sprite_lighting.gd`** as an autoload yourself, and call **`register_lit_material`** / **`unregister_lit_material`** as before.
-- **API (when used manually):** `SpriteLighting` (your autoload name) exposes **`ambient_color`**, **`directional_direction`** (normalized **toward** the light, canvas **XY**), **`directional_color`**, **`directional_intensity`**, and point helpers **`set_point_light`**, **`add_point_light`**, **`clear_point_lights`** (max **4** point lights for GL Compatibility). See comments in **`lighting/legacy/sprite_lighting.gd`** and **`lighting/legacy/sprite_lit.gdshader`**.
+Under the hood the shader gives each pixel its true ground position and height via **`LIGHT_VERTEX`**, so a light genuinely orbits an object instead of sliding up and down it. `test/iso_lighting_probe.tscn` is the one-minute check: orbit a light and watch whether the terminator sweeps sideways (working) or slides vertically (broken).
+
+### Project-wide knobs (global shader parameters)
+
+Registered in **Project Settings → Shader Globals**, and settable at runtime through **`IsoLightingConfig`** without re-rendering any art. `IsoLightingConfig.ensure_globals()` registers any that are missing, which consumers of this addon need on first run.
+
+| Global | Role |
+|---|---|
+| `iso_ambient_color` / `iso_ambient_energy` | Ambient level. Replaces `CanvasModulate`, which cannot be used here because it would multiply **emissive** too and stop it being the literal screen colour. |
+| `iso_yaw_rot`, `iso_cos_elevation`, `iso_sin_elevation` | Camera basis. Set together via **`IsoLightingConfig.set_camera(yaw_degrees, elevation_degrees)`**; defaults are **45° yaw, 30° elevation**, measured from the bundled art. |
+| `iso_terminator_low` / `iso_terminator_high` | The harsh terminator band. Narrow = hard wrap for dark, torch-lit scenes; widen to soften. |
+| `iso_rim_power` / `iso_rim_strength` | Fresnel rim. Needs **no authored mask** — with the light behind, the pixels facing it are the ones facing away from the camera, so fresnel and `N·L` peak together at the silhouette. Keep the power low so the rim reaches inward; the true silhouette is only 1–2 px. |
+| `iso_specular_shininess` / `iso_specular_strength` | Highlight tightness and scale, against `specular.png`. |
+| `iso_height_falloff` | `0` = off. Optional correction for the limitation below. |
+
+**Known limitation — falloff is screen-space.** `LIGHT_COLOR` arrives with the light's texture already multiplied in, sampled at the light's *screen* position, so brightness falls off with ground distance but **not with height**. Direction is fully 3D; brightness is not. This bites hardest in torch-lit scenes where lights sit close to what they light, hence `iso_height_falloff`. Doing it properly would need a per-light range, which Godot does not expose to canvas shaders.
+
+**Rendering:** This addon targets **Godot 4.x** with **GL Compatibility**; `LIGHT_VERTEX`, `NORMAL` and a custom `light()` all work there. Verify in your target configuration.
 
 ## Usage
 
@@ -157,10 +190,19 @@ All classes use `class_name`, so they are available globally once the addon is i
 - Previously **`entity/characters/character.gd`** and **`character.tscn`** (a parallel character implementation); now use **`CharacterEntity`** / **`PlayerEntity`** plus the shared presenter, with **`entity/characters/player.tscn`** as a preset that instances **`player_entity.tscn`**.
 - The `class_name` **`AnimatedEntity`** is retained — a rename (e.g. `SpriteSheetPresenter`) would be **breaking**; deferred until a dedicated release note.
 
+### Migration (iso lit shader)
+
+- **`tile_lit.gdshader`**, **`tile_lit_material.tres`** and **`TileLitMaterialFactory`** are replaced by **`iso_lit.gdshader`** + **`IsoLitMaterialFactory`**, shared by sprites and tile layers. The **`normal_y_flip`** uniform is gone — it solved a problem world-space normals do not have.
+- Normal maps are now **world space**, not tangent/screen space. Sheets baked for the old convention will light incorrectly and need re-baking.
+- New optional passes: **`height.png`** and **`emissive.png`** (see the layout table). `SpriteSheetPass` gained `HEIGHT` and `EMISSIVE`, appended so existing values keep their meaning.
+- **Remove `CanvasModulate`** from lit scenes and use **`IsoLightingConfig.set_ambient()`**; `CanvasModulate` would also multiply emissive.
+- **Re-place your lights**: `height` now means height above the ground in pixels, and a light node belongs at the ground point below the light.
+- The per-cell `ImageTexture` bake and its static cache in `AnimatedEntity` are gone; the shader reads whole sheets with a region uniform instead.
+
 ### Migration (lighting refactor)
 
 - **`use_pseudo_lighting`** → **`use_2d_normal_lighting`** (engine 2D lights; no **`SpriteLighting`** autoload by default).
-- Old shader + autoload live under **`lighting/legacy/`**.
+- The old shader and autoload have been removed; see the lighting sections above.
 
 ## Adding as a submodule
 
