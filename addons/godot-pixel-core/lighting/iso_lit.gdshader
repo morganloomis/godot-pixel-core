@@ -2,14 +2,16 @@ shader_type canvas_item;
 
 /* Isometric lit shader for pre-rendered passes (diffuse, normal, height, specular, emissive, occlusion).
  *
- * Normals are WORLD space (Z up), not screen/tangent space, so this shader writes [code]NORMAL[/code]
- * directly instead of [code]NORMAL_MAP[/code]: the stock path flips green and rebuilds
- * [code]z = sqrt(max(0, 1 - dot(xy, xy)))[/code], which both misreads world-space data and clamps away
+ * Normals arrive in the SHEET FRAME: world XY rotated by minus the camera yaw by the authoring
+ * pipeline, Z untouched. Not screen/tangent space, so this shader writes [code]NORMAL[/code] directly
+ * instead of [code]NORMAL_MAP[/code]: the stock path flips green and rebuilds
+ * [code]z = sqrt(max(0, 1 - dot(xy, xy)))[/code], which both misreads this data and clamps away
  * legitimately back-facing normals (which rim lighting needs).
  *
  * Everything is computed in ONE space, called "light space" below:
  *     (screen-x on the ground, screen-y on the ground, world height), all in pixels.
- * A world normal enters it by a fixed rotation about the vertical axis (the camera yaw), leaving Z alone.
+ * A sheet normal enters it by a fixed rotation about the vertical axis, leaving Z alone. That angle is
+ * TWICE the camera yaw, because the pipeline already rotated the art by minus the camera yaw.
  * Per-pixel height lets [code]LIGHT_VERTEX[/code] report each fragment's real ground position, so lights
  * orbit objects instead of sliding up and down them.
  *
@@ -18,23 +20,23 @@ shader_type canvas_item;
  * [code]height[/code] from "out of the screen" to "world up".
  */
 
-// --- per-material: whole sheets, plus which cell of them to use -------------------------------
+// --- per-material: whole pass sheets ----------------------------------------------------------
 // Absent passes are bound to 1x1 fallbacks by IsoLitMaterialFactory, so there is no branching here.
+// UV is atlas-space for both drawables -- a Sprite2D with an AtlasTexture reports the region's UVs
+// within the atlas, exactly as a TileMapLayer does -- so every pass samples with plain UV and no
+// cell/region bookkeeping is needed. (Measured on 4.6.1: region (32,0,32,32) of a 64x64 atlas reports
+// centre UV (0.75, 0.25), not (0.5, 0.5).)
 uniform sampler2D normal_tex : filter_nearest, repeat_disable;
 uniform sampler2D height_tex : filter_nearest, repeat_disable;
 uniform sampler2D specular_tex : filter_nearest, repeat_disable;
 uniform sampler2D emissive_tex : filter_nearest, repeat_disable;
 uniform sampler2D occlusion_tex : filter_nearest, repeat_disable;
 
-// Cell rect within the sheet, in pixels (x, y, w, h). Tile layers set this to the whole sheet,
-// which makes sheet_uv() the identity and reproduces the old dual-atlas behaviour.
-uniform vec4 cell_region = vec4(0.0, 0.0, 1.0, 1.0);
-uniform vec2 sheet_size = vec2(1.0, 1.0);
 
 // --- project-wide knobs (Project Settings > Shader Globals) ------------------------------------
 global uniform vec4 iso_ambient_color;
 global uniform float iso_ambient_energy;
-global uniform vec2 iso_yaw_rot;            // (cos, sin) of the camera yaw
+global uniform vec2 iso_yaw_rot;            // (cos, sin) of the residual sheet->light rotation
 global uniform float iso_cos_elevation;     // height -> screen-Y displacement
 global uniform float iso_sin_elevation;     // ground depth -> screen-Y displacement
 global uniform float iso_terminator_low;
@@ -45,12 +47,8 @@ global uniform float iso_specular_shininess;
 global uniform float iso_specular_strength;
 global uniform float iso_height_falloff;    // 0 = off; see "accepted limitations" in the addon README
 
-vec2 sheet_uv(vec2 uv) {
-	return (cell_region.xy + uv * cell_region.zw) / sheet_size;
-}
-
-// World (X east, Y north, Z up) -> light space. Pure rotation about Z, so Z passes through.
-vec3 world_to_light_space(vec3 n) {
+// Sheet frame -> light space. Pure rotation about Z, so Z passes through.
+vec3 sheet_to_light_space(vec3 n) {
 	float c = iso_yaw_rot.x;
 	float s = iso_yaw_rot.y;
 	return vec3(n.x * c - n.y * s, -n.x * s - n.y * c, n.z);
@@ -67,18 +65,17 @@ vec3 view_dir() {
 }
 
 void fragment() {
-	vec2 suv = sheet_uv(UV);
 	vec4 albedo = texture(TEXTURE, UV);
 
-	NORMAL = normalize(world_to_light_space(texture(normal_tex, suv).rgb * 2.0 - 1.0));
+	NORMAL = normalize(sheet_to_light_space(texture(normal_tex, UV).rgb * 2.0 - 1.0));
 
-	// 1 alpha step = 1 pixel of height above the ground plane.
-	float height_px = texture(height_tex, suv).r * 255.0;
+	// height.png R channel: 1 step = 1 pixel of height above the ground plane.
+	float height_px = texture(height_tex, UV).r * 255.0;
 	// Screen-Y grows downward, so shifting DOWN by the projected height lands on the ground point.
 	LIGHT_VERTEX = vec3(VERTEX + vec2(0.0, height_px * iso_cos_elevation), height_px);
 
-	float ao = texture(occlusion_tex, suv).r;
-	vec3 em = texture(emissive_tex, suv).rgb;
+	float ao = texture(occlusion_tex, UV).r;
+	vec3 em = texture(emissive_tex, UV).rgb;
 	float cov = emissive_coverage(em);
 
 	// Ambient lives here rather than in a CanvasModulate so emissive can sit on top of it untouched.
@@ -88,9 +85,8 @@ void fragment() {
 
 void light() {
 	// Locals do not carry over from fragment(), so re-sample what we need.
-	vec2 suv = sheet_uv(UV);
 	vec4 diffuse = texture(TEXTURE, UV);
-	float cov = emissive_coverage(texture(emissive_tex, suv).rgb);
+	float cov = emissive_coverage(texture(emissive_tex, UV).rgb);
 
 	vec3 V = view_dir();
 	float inv_sin = 1.0 / max(iso_sin_elevation, 0.0001);
@@ -99,6 +95,9 @@ void light() {
 	vec3 d;
 	float atten = 1.0;
 	if (LIGHT_IS_DIRECTIONAL) {
+		// LIGHT_DIRECTION points TOWARD the light, same as the positional vector, so no sign flip.
+		// Measured on 4.6.1: DirectionalLight2D at rotation 90° lights a screen-right-facing normal,
+		// 270° lights screen-left. Its `height` becomes the sun's elevation.
 		d = vec3(LIGHT_DIRECTION.xy * vec2(1.0, inv_sin), LIGHT_DIRECTION.z);
 	} else {
 		d = LIGHT_POSITION - LIGHT_VERTEX;
@@ -117,7 +116,7 @@ void light() {
 
 	vec3 H = normalize(L + V);
 	float spec = pow(max(dot(NORMAL, H), 0.0), max(iso_specular_shininess, 0.001));
-	spec *= texture(specular_tex, suv).r * iso_specular_strength * lambert;
+	spec *= texture(specular_tex, UV).r * iso_specular_strength * lambert;
 
 	// Rim needs no authored mask: with the light behind, the pixels facing it are exactly the ones
 	// facing away from the camera, so fresnel and N.L peak together at the silhouette.

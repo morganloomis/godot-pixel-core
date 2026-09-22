@@ -3,8 +3,10 @@ class_name IsoLitMaterialFactory
 extends RefCounted
 
 ## Builds [ShaderMaterial]s for [code]iso_lit.gdshader[/code]. Used by both [AnimatedEntity]
-## (one material per instance, cell picked by [member cell_region]) and [LitTileMapLayer]
-## (one material per layer, whole sheet).
+## (one material per instance) and [LitTileMapLayer] (one material per layer).
+##
+## There is no per-cell bookkeeping: [code]UV[/code] is atlas-space on both drawables, so binding the
+## whole pass sheets is enough and nothing needs writing per animation frame.
 ##
 ## Absent passes are bound to cached 1x1 fallbacks rather than guarded by [code]bool[/code] uniforms,
 ## so the shader has no branching and every sampler is always valid.
@@ -41,16 +43,16 @@ static func _solid_texture(color: Color) -> ImageTexture:
 	return tex
 
 
-## Encodes a world-space normal into the shader's [code][0,1][/code] storage convention.
-static func encode_world_normal(world_normal: Vector3) -> Color:
-	var n := world_normal.normalized()
+## Encodes a sheet-frame normal the same way the authoring pipeline writes normal.png.
+static func encode_sheet_normal(sheet_normal: Vector3) -> Color:
+	var n := sheet_normal.normalized()
 	return Color(n.x * 0.5 + 0.5, n.y * 0.5 + 0.5, n.z * 0.5 + 0.5, 1.0)
 
 
-static func _fallback_for(sheet_pass: SpriteSheetLookupBase.SpriteSheetPass, default_world_normal: Vector3) -> Texture2D:
+static func _fallback_for(sheet_pass: SpriteSheetLookupBase.SpriteSheetPass, default_sheet_normal: Vector3) -> Texture2D:
 	match sheet_pass:
 		SpriteSheetLookupBase.SpriteSheetPass.NORMAL:
-			return _solid_texture(encode_world_normal(default_world_normal))
+			return _solid_texture(encode_sheet_normal(default_sheet_normal))
 		SpriteSheetLookupBase.SpriteSheetPass.HEIGHT:
 			return _solid_texture(FALLBACK_HEIGHT)
 		SpriteSheetLookupBase.SpriteSheetPass.SPECULAR:
@@ -63,44 +65,23 @@ static func _fallback_for(sheet_pass: SpriteSheetLookupBase.SpriteSheetPass, def
 
 
 ## [param pass_sheets] maps [enum SpriteSheetLookupBase.SpriteSheetPass] to whole-sheet textures;
-## missing or empty entries fall back to 1x1 defaults. [param default_world_normal] is what an
-## entity without [code]normal.png[/code] is shaded as — world up for ground, camera-facing for sprites
-## (see [method IsoLightingConfig.camera_facing_world_normal]).
-static func create_material(pass_sheets: Dictionary, default_world_normal: Vector3 = Vector3(0.0, 0.0, 1.0)) -> ShaderMaterial:
+## missing or empty entries fall back to 1x1 defaults. [param default_sheet_normal] is what an
+## entity without [code]normal.png[/code] is shaded as — up for ground, camera-facing for sprites
+## (see [method IsoLightingConfig.camera_facing_sheet_normal]).
+static func create_material(pass_sheets: Dictionary, default_sheet_normal: Vector3 = Vector3(0.0, 0.0, 1.0)) -> ShaderMaterial:
 	IsoLightingConfig.ensure_globals()
 	var material := ShaderMaterial.new()
 	material.shader = load(SHADER_PATH) as Shader
-	apply_pass_sheets(material, pass_sheets, default_world_normal)
+	apply_pass_sheets(material, pass_sheets, default_sheet_normal)
 	return material
 
 
-## Rebinds every sampler. Cheap enough to call on action changes; do NOT call per frame — per frame
-## only [method set_cell_region] needs to change.
-static func apply_pass_sheets(material: ShaderMaterial, pass_sheets: Dictionary, default_world_normal: Vector3 = Vector3(0.0, 0.0, 1.0)) -> void:
+## Rebinds every sampler. Called on action changes; nothing needs rebinding per frame.
+static func apply_pass_sheets(material: ShaderMaterial, pass_sheets: Dictionary, default_sheet_normal: Vector3 = Vector3(0.0, 0.0, 1.0)) -> void:
 	if material == null:
 		return
 	for sheet_pass in PASS_UNIFORMS:
 		var tex: Texture2D = pass_sheets.get(sheet_pass, null)
 		if tex == null or tex.get_width() <= 0:
-			tex = _fallback_for(sheet_pass, default_world_normal)
+			tex = _fallback_for(sheet_pass, default_sheet_normal)
 		material.set_shader_parameter(PASS_UNIFORMS[sheet_pass], tex)
-
-
-## Which cell of the sheet this draw uses, in pixels. The only value that changes per animation frame.
-static func set_cell_region(material: ShaderMaterial, region: Rect2) -> void:
-	if material == null:
-		return
-	material.set_shader_parameter("cell_region", Vector4(region.position.x, region.position.y, region.size.x, region.size.y))
-
-
-static func set_sheet_size(material: ShaderMaterial, size: Vector2) -> void:
-	if material == null:
-		return
-	material.set_shader_parameter("sheet_size", Vector2(maxf(size.x, 1.0), maxf(size.y, 1.0)))
-
-
-## Tile layers draw straight from the atlas, so the cell region is the whole sheet and
-## [code]sheet_uv()[/code] becomes the identity.
-static func set_whole_sheet(material: ShaderMaterial, size: Vector2) -> void:
-	set_sheet_size(material, size)
-	set_cell_region(material, Rect2(Vector2.ZERO, Vector2(maxf(size.x, 1.0), maxf(size.y, 1.0))))
