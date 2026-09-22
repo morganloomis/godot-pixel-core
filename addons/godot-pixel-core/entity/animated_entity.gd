@@ -7,7 +7,7 @@ extends Node2D
 ## Animation timing: [member frame_rate] (FPS). Movement magnitude for body scripts: [member movement_speed] (pixels/sec).
 ## Enable [member use_2d_normal_lighting] for engine 2D lights: the child [code]Sprite2D[/code] gets a
 ## [ShaderMaterial] from [IsoLitMaterialFactory] ([code]iso_lit.gdshader[/code]). Whole pass sheets are bound
-## once per action and the current cell is picked by a region uniform, so nothing is baked per frame.
+## once per action and the sheet UVs Godot already supplies pick the cell, so nothing is baked per frame.
 ## Treat as an **authoring-time** flag; unlit instances use a plain diffuse [code]AtlasTexture[/code] only.
 
 enum PlaybackMode {
@@ -197,8 +197,8 @@ func _apply_2d_normal_lighting_setup() -> void:
 
 
 ## Binds whole pass sheets for [param eid] / [param action_name]. No-op while the action is unchanged,
-## so the per-frame cost of lit mode is a single [code]cell_region[/code] write.
-func _bind_lit_pass_sheets(eid: String, action_name: String, diffuse_sheet: Texture2D) -> void:
+## so advancing a frame within one action costs nothing on the material.
+func _bind_lit_pass_sheets(eid: String, action_name: String) -> void:
 	var key := "%s|%s" % [eid, action_name]
 	if key == _lit_bound_key and _lit_material != null:
 		return
@@ -210,12 +210,11 @@ func _bind_lit_pass_sheets(eid: String, action_name: String, diffuse_sheet: Text
 			if tex != null:
 				sheets[sheet_pass] = tex
 	# A sprite with no normal.png is shaded as if it faced the camera, not as if it lay on the ground.
-	var fallback_normal := IsoLightingConfig.camera_facing_world_normal()
+	var fallback_normal := IsoLightingConfig.camera_facing_sheet_normal()
 	if _lit_material == null:
 		_lit_material = IsoLitMaterialFactory.create_material(sheets, fallback_normal)
 	else:
 		IsoLitMaterialFactory.apply_pass_sheets(_lit_material, sheets, fallback_normal)
-	IsoLitMaterialFactory.set_sheet_size(_lit_material, Vector2(diffuse_sheet.get_width(), diffuse_sheet.get_height()))
 	sprite.material = _lit_material
 	_lit_bound_key = key
 
@@ -232,8 +231,7 @@ func update_sprite() -> void:
 	sprite.texture = diffuse_atlas
 	if not _use_2d_normal_lighting:
 		return
-	_bind_lit_pass_sheets(eid, _playback_action, diffuse_atlas.atlas)
-	IsoLitMaterialFactory.set_cell_region(_lit_material, diffuse_atlas.region)
+	_bind_lit_pass_sheets(eid, _playback_action)
 
 
 func _on_animation_timeout() -> void:

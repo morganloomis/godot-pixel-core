@@ -6,9 +6,13 @@ extends RefCounted
 ## [code]iso_lit.gdshader[/code]. Everything here is a Godot **global shader parameter**, so values
 ## fan out to every lit material without an autoload pushing uniforms each frame.
 ##
-## Camera angle is a runtime knob, not a re-render: normal maps are baked in **world** space and this
-## config supplies the rotation into the shader's light space, so changing the camera re-lights
-## existing art instead of invalidating it.
+## Normal sheets are **pre-rotated by the authoring pipeline**: pixel_pipe bakes world XY rotated by
+## **minus the camera yaw** into [code]normal.png[/code], leaving Z untouched. That frame is called the
+## **sheet frame** throughout. The shader needs the residual rotation from sheet frame into light
+## space, which works out to **twice** the camera yaw - see [method set_camera].
+##
+## Because the yaw is baked into the art, changing the camera yaw means **re-rendering every sheet**
+## and updating this config. Elevation is not baked and stays a pure runtime knob.
 ##
 ## Consumers must have these globals registered before any lit shader compiles. [method ensure_globals]
 ## does that and runs from [method IsoLitMaterialFactory.create_material] before the shader is loaded.
@@ -25,9 +29,16 @@ const RIM_STRENGTH := "iso_rim_strength"
 const SPECULAR_SHININESS := "iso_specular_shininess"
 const SPECULAR_STRENGTH := "iso_specular_strength"
 const HEIGHT_FALLOFF := "iso_height_falloff"
+const SHADOW_STRENGTH := "iso_shadow_strength"
+const SHADOW_SOFTNESS := "iso_shadow_softness"
+const SHADOW_MAX_LENGTH := "iso_shadow_max_length"
 
-## Measured from the bundled art: left silhouette reads world -X, right silhouette world -Y.
+## Real camera yaw, matching pixel_pipe's [code]NORMAL_CANVAS_YAW_DEG[/code]. Keep the two in sync:
+## the pipeline bakes minus this angle into every normal sheet.
 const DEFAULT_YAW_DEGREES := 45.0
+## The pipeline pre-rotates normals, so the shader applies the residual rotation rather than the
+## camera yaw itself. Set false only if the pipeline is changed to emit unrotated world normals.
+const SHEET_NORMALS_PREROTATED := true
 ## Measured from the bundled tile bake: the ground plane reads (0, 0, 1) and the camera sits 30° above it.
 const DEFAULT_ELEVATION_DEGREES := 30.0
 
@@ -37,7 +48,8 @@ const DEFAULT_ELEVATION_DEGREES := 30.0
 static var GLOBAL_DEFINITIONS: Dictionary = {
 	AMBIENT_COLOR: [RenderingServer.GLOBAL_VAR_TYPE_COLOR, Color(0.12, 0.13, 0.18, 1.0)],
 	AMBIENT_ENERGY: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0],
-	YAW_ROT: [RenderingServer.GLOBAL_VAR_TYPE_VEC2, Vector2(0.7071068, 0.7071068)],
+	# cos/sin of 2 x 45 deg: the residual sheet->light rotation, not the camera yaw itself.
+	YAW_ROT: [RenderingServer.GLOBAL_VAR_TYPE_VEC2, Vector2(0.0, 1.0)],
 	COS_ELEVATION: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.8660254],
 	SIN_ELEVATION: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.5],
 	# A narrow band is the point: dark environments want a hard wrap, not a soft Lambert ramp.
@@ -49,64 +61,85 @@ static var GLOBAL_DEFINITIONS: Dictionary = {
 	SPECULAR_SHININESS: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 24.0],
 	SPECULAR_STRENGTH: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.5],
 	HEIGHT_FALLOFF: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0],
+	SHADOW_STRENGTH: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0],
+	# Light disc radius in screen px. 0 gives hard shadows; larger widens the penumbra with distance
+	# while leaving the contact point crisp.
+	SHADOW_SOFTNESS: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 10.0],
+	SHADOW_MAX_LENGTH: [RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 192.0],
 }
 
 
-## Registers any missing global shader parameter with its default. Safe to call repeatedly.
-## Must run before a lit shader compiles, otherwise the shader errors on the undeclared globals.
+## Runtime-safe presence check. [method RenderingServer.global_shader_parameter_get_list] and
+## [method RenderingServer.global_shader_parameter_get] are **editor only** — outside the editor they
+## error out and return nothing — so presence is read from [ProjectSettings] instead, and the camera
+## basis is mirrored CPU-side rather than read back from the renderer.
+static var _globals_ensured: bool = false
+static var _yaw_rot: Vector2 = Vector2(0.0, 1.0)
+static var _cos_elevation: float = 0.8660254
+static var _sin_elevation: float = 0.5
+
+
+static func _project_global_value(gname: String, fallback: Variant) -> Variant:
+	var key := "shader_globals/" + gname
+	if not ProjectSettings.has_setting(key):
+		return fallback
+	var entry: Variant = ProjectSettings.get_setting(key)
+	if entry is Dictionary and (entry as Dictionary).has("value"):
+		return (entry as Dictionary)["value"]
+	return fallback
+
+
+## Registers any global shader parameter the project does not already declare, and seeds the CPU
+## mirror of the camera basis from the project's authored values. Runs once per session.
 static func ensure_globals() -> void:
-	var present: Dictionary = {}
-	for existing_name in RenderingServer.global_shader_parameter_get_list():
-		present[String(existing_name)] = true
+	if _globals_ensured:
+		return
+	_globals_ensured = true
 	for gname in GLOBAL_DEFINITIONS:
-		if present.has(gname):
-			continue
 		var definition: Array = GLOBAL_DEFINITIONS[gname]
+		if ProjectSettings.has_setting("shader_globals/" + gname):
+			continue
 		RenderingServer.global_shader_parameter_add(gname, definition[0], definition[1])
+	var yaw: Variant = _project_global_value(YAW_ROT, _yaw_rot)
+	if yaw is Vector2 and (yaw as Vector2).length_squared() > 0.0:
+		_yaw_rot = yaw
+	var cos_e: Variant = _project_global_value(COS_ELEVATION, _cos_elevation)
+	var sin_e: Variant = _project_global_value(SIN_ELEVATION, _sin_elevation)
+	if (cos_e is float or cos_e is int) and (sin_e is float or sin_e is int):
+		_cos_elevation = float(cos_e)
+		_sin_elevation = float(sin_e)
 
 
 static func set_global(gname: String, value: Variant) -> void:
 	RenderingServer.global_shader_parameter_set(gname, value)
 
 
-## Returns the registered value, or [param fallback] when the global is missing or the wrong type.
-static func get_global(gname: String, fallback: Variant = null) -> Variant:
-	var value: Variant = RenderingServer.global_shader_parameter_get(gname)
-	if value == null:
-		return fallback
-	return value
-
-
-## Sets the camera basis used to rotate world-space normals and to unsquash ground depth.
+## Sets the camera basis used to rotate sheet-frame normals and to unsquash ground depth.
+## [param yaw_degrees] is the **real camera yaw**; the angle handed to the shader is doubled, because
+## the pipeline has already rotated the art by minus that yaw.
 static func set_camera(yaw_degrees: float, elevation_degrees: float) -> void:
 	ensure_globals()
-	var yaw := deg_to_rad(yaw_degrees)
+	var shader_yaw := yaw_degrees * 2.0 if SHEET_NORMALS_PREROTATED else yaw_degrees
+	var yaw := deg_to_rad(shader_yaw)
 	var elevation := deg_to_rad(elevation_degrees)
-	set_global(YAW_ROT, Vector2(cos(yaw), sin(yaw)))
-	set_global(COS_ELEVATION, cos(elevation))
-	set_global(SIN_ELEVATION, sin(elevation))
+	_yaw_rot = Vector2(cos(yaw), sin(yaw))
+	_cos_elevation = cos(elevation)
+	_sin_elevation = sin(elevation)
+	set_global(YAW_ROT, _yaw_rot)
+	set_global(COS_ELEVATION, _cos_elevation)
+	set_global(SIN_ELEVATION, _sin_elevation)
 
 
+## The real camera yaw, undoing the doubling [method set_camera] applies.
 static func get_yaw_degrees() -> float:
-	var raw: Variant = get_global(YAW_ROT)
-	if not (raw is Vector2):
-		return DEFAULT_YAW_DEGREES
-	var rot: Vector2 = raw
-	if rot.length_squared() <= 0.0:
-		return DEFAULT_YAW_DEGREES
-	return rad_to_deg(atan2(rot.y, rot.x))
+	ensure_globals()
+	var shader_yaw := rad_to_deg(atan2(_yaw_rot.y, _yaw_rot.x))
+	return shader_yaw / 2.0 if SHEET_NORMALS_PREROTATED else shader_yaw
 
 
 static func get_elevation_degrees() -> float:
-	var raw_sin: Variant = get_global(SIN_ELEVATION)
-	var raw_cos: Variant = get_global(COS_ELEVATION)
-	if not (raw_sin is float) or not (raw_cos is float):
-		return DEFAULT_ELEVATION_DEGREES
-	var s: float = raw_sin
-	var c: float = raw_cos
-	if s == 0.0 and c == 0.0:
-		return DEFAULT_ELEVATION_DEGREES
-	return rad_to_deg(atan2(s, c))
+	ensure_globals()
+	return rad_to_deg(atan2(_sin_elevation, _cos_elevation))
 
 
 ## Overall ambient level, changeable at runtime without re-rendering art. Replaces [CanvasModulate]
@@ -117,14 +150,20 @@ static func set_ambient(color: Color, energy: float = 1.0) -> void:
 	set_global(AMBIENT_ENERGY, energy)
 
 
-## World-space normal pointing straight at the camera: the right fallback for a sprite with no
-## [code]normal.png[/code]. Derived from the current basis so it tracks [method set_camera].
-static func camera_facing_world_normal() -> Vector3:
+## Sheet-frame normal pointing straight at the camera: the right fallback for a sprite with no
+## [code]normal.png[/code]. Expressed in the same pre-rotated frame the pipeline writes, so it can be
+## encoded into a 1x1 texture and fed to the shader exactly like real sheet data.
+## At 45 deg yaw / 30 deg elevation this is (-0.866, 0, 0.5), matching a measured pipeline bake.
+static func camera_facing_sheet_normal() -> Vector3:
 	var yaw := deg_to_rad(get_yaw_degrees())
 	var elevation := deg_to_rad(get_elevation_degrees())
-	return Vector3(-cos(elevation) * sin(yaw), -cos(elevation) * cos(yaw), sin(elevation)).normalized()
+	var cos_e := cos(elevation)
+	if SHEET_NORMALS_PREROTATED:
+		return Vector3(-cos_e * sin(2.0 * yaw), -cos_e * cos(2.0 * yaw), sin(elevation)).normalized()
+	return Vector3(-cos_e * sin(yaw), -cos_e * cos(yaw), sin(elevation)).normalized()
 
 
-## World up: the right fallback normal for ground planes and tile layers.
-static func ground_world_normal() -> Vector3:
+## Straight up: the right fallback normal for ground planes and tile layers. The pipeline's yaw
+## rotation leaves Z untouched, so world up and sheet up are the same vector.
+static func ground_sheet_normal() -> Vector3:
 	return Vector3(0.0, 0.0, 1.0)

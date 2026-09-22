@@ -151,7 +151,46 @@ Add the same **`DirectionalLight2D` / `PointLight2D`** as for characters. A mini
 
 This **redefines Godot's `height`** from "out of the screen" to "world up", and it is what lets `LIGHT_POSITION` be read as a real 3D position. Existing scenes' lights will mean something different after this change — re-place them.
 
+For a **`DirectionalLight2D`**, rotating the node swings the sun around the vertical axis and **`height`** sets its elevation: rotation **90°** lights screen-right-facing surfaces, **270°** screen-left.
+
 Under the hood the shader gives each pixel its true ground position and height via **`LIGHT_VERTEX`**, so a light genuinely orbits an object instead of sliding up and down it. `test/iso_lighting_probe.tscn` is the one-minute check: orbit a light and watch whether the terminator sweeps sideways (working) or slides vertically (broken).
+
+### Ground shadows
+
+Cast from the **`shadow_map.png`** pass (**R** = bottom, **G** = top of the geometry above each ground
+point, both at one step per pixel; **A** = coverage). Add an **`IsoGroundShadow`** under the body,
+point **`presenter`** at the `AnimatedEntity`, and give it a **`z_index`** below the entities.
+
+The quad lies on the ground and is drawn with **`blend_sub`**, with occlusion computed inside
+**`light()`**. That means each light subtracts exactly the light it would have delivered, so culling,
+masks, colour and energy all come from the light node — and a warm torch's shadow leaves the cool
+ambient behind instead of painting flat grey.
+
+Nothing about the shape is authored. For each ground pixel the shader marches back toward the light
+and tests whether the caster's vertical extent intersects the ray, so **length and direction follow
+the light's ground position and height on their own**: lower the light and the ray to it gets
+shallower, staying inside the caster over a longer distance. Softness comes from treating the light
+as a disc and averaging several rays — near the contact point every ray passes through nearly the
+same place, so the edge stays crisp and spreads with distance.
+
+Measured by `test/iso_shadow_probe.tscn` against an analytically known caster (40 px tall, light
+150 px away): tip at 110 px for a light 100 px up and 175 px for one 80 px up, both inside the band
+the geometry predicts; penumbra 9 px at contact widening to 61 px far out.
+
+| Global | Role |
+|---|---|
+| `iso_shadow_strength` | Overall darkness. |
+| `iso_shadow_softness` | Light disc radius in screen px. `0` gives hard shadows; larger widens the penumbra with distance while leaving contact crisp. |
+| `iso_shadow_max_length` | How far a shadow is traced, in screen px. |
+
+**`field_extent`** (on the node) is how many caster cells wide the quad is, and it caps how far a
+shadow can reach: the height field only covers one cell, so beyond that there is no data and the
+shadow is clipped. The default of `3` handles ordinary lights; very low lights need a larger value,
+which costs fill rate. In the probe, a light 60 px up clipped at 191 px with `field_extent = 3` and
+reached its full 329 px at `7`.
+
+**Cost:** 8 rays x 24 steps, so up to 192 texture fetches per shadowed pixel per light. That is the
+main reason to keep the quad only as large as the shadows actually need.
 
 ### Project-wide knobs (global shader parameters)
 

@@ -131,11 +131,4 @@ func _apply_lit_setup() -> void:
 		if tex != null:
 			sheets[sheet_pass] = tex
 
-	var mat := IsoLitMaterialFactory.create_material(sheets, IsoLightingConfig.ground_world_normal())
-	# Tiles sample the atlas with the UVs Godot already gives them, so the "cell" is the whole sheet.
-	var diffuse := _first_atlas_texture()
-	var size := Vector2.ONE
-	if diffuse != null and diffuse.get_width() > 0:
-		size = Vector2(diffuse.get_width(), diffuse.get_height())
-	IsoLitMaterialFactory.set_whole_sheet(mat, size)
-	material = mat
+	material = IsoLitMaterialFactory.create_material(sheets, IsoLightingConfig.ground_sheet_normal())

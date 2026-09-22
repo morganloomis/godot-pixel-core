@@ -10,6 +10,7 @@ enum SpriteSheetPass {
 	OCCLUSION,
 	HEIGHT,
 	EMISSIVE,
+	SHADOW_MAP,
 }
 
 ## Filename per [enum SpriteSheetPass]; shared by the animated and tile layouts.
@@ -20,6 +21,8 @@ const PASS_FILE_NAMES: Dictionary = {
 	SpriteSheetPass.OCCLUSION: "occlusion.png",
 	SpriteSheetPass.HEIGHT: "height.png",
 	SpriteSheetPass.EMISSIVE: "emissive.png",
+	# Ground height field: R = bottom, G = top (1 step = 1 px), A = coverage. Not a lit surface pass.
+	SpriteSheetPass.SHADOW_MAP: "shadow_map.png",
 }
 
 # Animated sheet rows (top→bottom): S=0, then counter-clockwise (S, SE, E, NE, N, NW, W, SW)
