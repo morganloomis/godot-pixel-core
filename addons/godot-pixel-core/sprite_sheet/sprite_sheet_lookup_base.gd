@@ -2,11 +2,24 @@ class_name SpriteSheetLookupBase
 extends RefCounted
 
 ## Per-action pass files under [code]{animated_root}/{entity}/{action}/[/code].
+## [code]HEIGHT[/code] and [code]EMISSIVE[/code] are appended so existing serialized values keep their meaning.
 enum SpriteSheetPass {
 	DIFFUSE,
 	NORMAL,
 	SPECULAR,
 	OCCLUSION,
+	HEIGHT,
+	EMISSIVE,
+}
+
+## Filename per [enum SpriteSheetPass]; shared by the animated and tile layouts.
+const PASS_FILE_NAMES: Dictionary = {
+	SpriteSheetPass.DIFFUSE: "diffuse.png",
+	SpriteSheetPass.NORMAL: "normal.png",
+	SpriteSheetPass.SPECULAR: "specular.png",
+	SpriteSheetPass.OCCLUSION: "occlusion.png",
+	SpriteSheetPass.HEIGHT: "height.png",
+	SpriteSheetPass.EMISSIVE: "emissive.png",
 }
 
 # Animated sheet rows (top→bottom): S=0, then counter-clockwise (S, SE, E, NE, N, NW, W, SW)
@@ -61,37 +74,31 @@ func list_animated_action_folder_names_sorted(entity: String) -> Array[String]:
 	return out
 
 
+## Filename for [param sheet_pass]; falls back to [code]diffuse.png[/code] for unknown values.
+static func pass_file_name(sheet_pass: SpriteSheetPass) -> String:
+	return PASS_FILE_NAMES.get(sheet_pass, "diffuse.png")
+
+
 func animated_pass_texture_path(entity: String, action: String, sheet_pass: SpriteSheetPass) -> String:
-	var fname: String
-	match sheet_pass:
-		SpriteSheetPass.DIFFUSE:
-			fname = "diffuse.png"
-		SpriteSheetPass.NORMAL:
-			fname = "normal.png"
-		SpriteSheetPass.SPECULAR:
-			fname = "specular.png"
-		SpriteSheetPass.OCCLUSION:
-			fname = "occlusion.png"
-		_:
-			fname = "diffuse.png"
-	return animated_sheet_root.path_join(entity).path_join(action).path_join(fname)
+	return animated_sheet_root.path_join(entity).path_join(action).path_join(pass_file_name(sheet_pass))
 
 
 ## Path to pass file for a tile set: [code]{tile_sheet_root}/{tile_set_id}/{pass}.png[/code] (same filenames as [method animated_pass_texture_path]).
 func tile_pass_texture_path(tile_set_id: String, sheet_pass: SpriteSheetPass) -> String:
-	var fname: String
-	match sheet_pass:
-		SpriteSheetPass.DIFFUSE:
-			fname = "diffuse.png"
-		SpriteSheetPass.NORMAL:
-			fname = "normal.png"
-		SpriteSheetPass.SPECULAR:
-			fname = "specular.png"
-		SpriteSheetPass.OCCLUSION:
-			fname = "occlusion.png"
-		_:
-			fname = "diffuse.png"
-	return tile_sheet_root.path_join(tile_set_id).path_join(fname)
+	return tile_sheet_root.path_join(tile_set_id).path_join(pass_file_name(sheet_pass))
+
+
+## Whole sheet [Texture2D] for an animated pass (not a cell region); [code]null[/code] when the file is absent.
+## Shader-driven lit paths bind whole sheets and pick cells with a region uniform, so they do not need [AtlasTexture] per cell.
+func get_animated_pass_sheet(entity: String, action: String, sheet_pass: SpriteSheetPass) -> Texture2D:
+	var path := animated_pass_texture_path(entity, action, sheet_pass)
+	return get_cached_texture(path, path)
+
+
+## Whole sheet [Texture2D] for a tile pass (not a cell region); [code]null[/code] when the file is absent.
+func get_tile_pass_sheet(tile_set_id: String, sheet_pass: SpriteSheetPass) -> Texture2D:
+	var path := tile_pass_texture_path(tile_set_id, sheet_pass)
+	return get_cached_texture(path, path)
 
 
 ## Compute cell Rect2 for animated layout: single 8-row grid (row 0 = S, then counter-clockwise to SW), [param frame_count] columns.

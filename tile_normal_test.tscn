@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://bitffyevr6pss"]
+
+[ext_resource type="Texture2D" uid="uid://fmbrwdprquch" path="res://test/art/tile/paver/normal_cube.png" id="1_40efl"]
+
+[sub_resource type="Gradient" id="Gradient_0stw3"]
+offsets = PackedFloat32Array(0.0035971224, 0.99820143)
+colors = PackedColorArray(0.44484302, 0.44484338, 0.4448433, 1, 0.4506483, 0.4506483, 0.45064825, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_b1vko"]
+gradient = SubResource("Gradient_0stw3")
+
+[sub_resource type="CanvasTexture" id="CanvasTexture_p0hi5"]
+diffuse_texture = SubResource("GradientTexture1D_b1vko")
+normal_texture = ExtResource("1_40efl")
+
+[sub_resource type="Gradient" id="Gradient_40efl"]
+offsets = PackedFloat32Array(0.48943663, 0.5757042)
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_0stw3"]
+gradient = SubResource("Gradient_40efl")
+height = 32
+fill = 1
+fill_from = Vector2(0.491453, 0.517094)
+fill_to = Vector2(0, 0)
+
+[node name="Node2D" type="Node2D" unique_id=1939068860]
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1212137941]
+position = Vector2(329, 237)
+scale = Vector2(1.4453125, 296.5)
+texture = SubResource("CanvasTexture_p0hi5")
+
+[node name="PointLight2D" type="PointLight2D" parent="." unique_id=1855225755]
+position = Vector2(260, 187)
+energy = 1.46
+texture = SubResource("GradientTexture2D_0stw3")
+texture_scale = 14.44

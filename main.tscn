@@ -1,15 +1,8 @@
 [gd_scene format=3 uid="uid://b7sx3voglrv8k"]
 
 [ext_resource type="PackedScene" uid="uid://tk0swuewi3xl" path="res://addons/godot-pixel-core/entity/characters/player.tscn" id="1_ig7tw"]
-[ext_resource type="Shader" uid="uid://b3h8w2n0tile1" path="res://addons/godot-pixel-core/lighting/tile_lit.gdshader" id="1_lquwl"]
 [ext_resource type="Texture2D" uid="uid://djpl0k17j6hvy" path="res://test/art/tile/paver/diffuse.png" id="2_0xm2m"]
-[ext_resource type="Texture2D" uid="uid://djpl0ldewdvoy" path="res://test/art/tile/paver/normal.png" id="2_7mycd"]
 [ext_resource type="Script" uid="uid://bq8litmaplyr1" path="res://addons/godot-pixel-core/tile_map/lit_tile_map_layer.gd" id="3_litlayer"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_272bh"]
-shader = ExtResource("1_lquwl")
-shader_parameter/normal_atlas = ExtResource("2_7mycd")
-shader_parameter/normal_y_flip = 1.0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_h2yge"]
 texture = ExtResource("2_0xm2m")
@@ -24,9 +17,6 @@ sources/0 = SubResource("TileSetAtlasSource_h2yge")
 
 [node name="Main" type="Node2D" unique_id=613151465]
 
-[node name="CanvasModulate" type="CanvasModulate" parent="." unique_id=92644106]
-color = Color(0.55, 0.58, 0.62, 1)
-
 [node name="DirectionalLight2D" type="DirectionalLight2D" parent="." unique_id=92644105]
 rotation = 0.7853982
 color = Color(1, 0.95, 0.85, 1)
@@ -36,7 +26,6 @@ height = 0.8
 [node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=92644107]
 y_sort_enabled = true
 texture_filter = 1
-material = SubResource("ShaderMaterial_272bh")
 position = Vector2(-1, 0)
 tile_set = SubResource("TileSet_1bvp3")
 script = ExtResource("3_litlayer")

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://vhh1l6yom4j1"
-path="res://.godot/imported/normal.png-a864183b6c2bb0689ad5e8577ab3543b.ctex"
+uid="uid://fmbrwdprquch"
+path="res://.godot/imported/normal_cube.png-32315b8193fc4fdf990382c20ca6cd2d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://test/art/sprite/player/walk/normal.png"
-dest_files=["res://.godot/imported/normal.png-a864183b6c2bb0689ad5e8577ab3543b.ctex"]
+source_file="res://test/art/tile/paver/normal_cube.png"
+dest_files=["res://.godot/imported/normal_cube.png-32315b8193fc4fdf990382c20ca6cd2d.ctex"]
 
 [params]
 

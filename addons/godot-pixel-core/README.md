@@ -72,6 +72,16 @@ Under **`{animated_sheet_root}/{entity}/{action}/`**, use optional PNGs:
 
 Resolve regions with `AnimatedSpriteSheetLookup.get_texture(entity, action, direction, frame, SpriteSheetPass.DIFFUSE)` (or `SpriteSheetPass.NORMAL`, etc.).
 
+### Optional action transition folders (`{from}-{to}`)
+
+To smooth logical action changes (e.g. idle → walk), you may add an **optional** bridge folder named **`{previous}-{target}`** under the entity (e.g. `idle-walk/`). Same per-pass layout as any other action (`diffuse.png`, optional `normal.png`, etc.).
+
+- **Discovery is automatic** — when gameplay calls `set_action("walk")` from `idle`, the presenter looks up `idle-walk`; if `get_frame_count > 0`, it plays that folder **once**, then begins `walk` from frame 0.
+- **Not a logical action** — do not call `set_action("idle-walk")` from gameplay; hyphenated names are presenter-internal bridges only.
+- **Not `PLAY_ONCE`** — bridge clips always play through once regardless of `playback_modes`; they do not stop the timer or emit `animation_finished`. Terminal one-shot actions (e.g. death) remain `PlaybackMode.PLAY_ONCE` on the **logical** action name.
+- **Missing folder** — if no `{from}-{to}` folder exists, the presenter switches to the target action immediately (same as before this feature).
+- **Interrupt** — if `set_action` is called again while a bridge is playing, the bridge is abandoned and the new action starts immediately (no `{partial_bridge}-{new}` lookup).
+
 **Normal encoding** (for engine 2D lighting and for the **legacy** shader): tangent-style RGB in **[0,1]**, mapped to **[-1,1]** with fixed basis **+X right, +Y up, +Z out of the sprite plane** (toward the viewer). Match Godot’s expected normal map orientation for the **`CanvasTexture`** normal slot. If you use the **legacy** bundle and your art’s green channel is inverted, set **`normal_y_flip`** to **-1** on the duplicated **`lighting/legacy/sprite_lit_material.tres`**.
 
 In **debug** builds, if an optional pass exists but its image size does not match `diffuse.png`, a warning is printed.
