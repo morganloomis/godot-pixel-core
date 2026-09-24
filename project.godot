@@ -51,7 +51,7 @@ iso_ambient_energy={
 }
 iso_yaw_rot={
 "type": "vec2",
-"value": Vector2(0, 1)
+"value": Vector2(0.7071068, 0.7071068)
 }
 iso_cos_elevation={
 "type": "float",
@@ -68,6 +68,10 @@ iso_terminator_low={
 iso_terminator_high={
 "type": "float",
 "value": 0.45
+}
+iso_terminator_form={
+"type": "float",
+"value": 0.75
 }
 iso_rim_power={
 "type": "float",
@@ -87,7 +91,11 @@ iso_specular_strength={
 }
 iso_height_falloff={
 "type": "float",
-"value": 0.0
+"value": 1.0
+}
+iso_height_falloff_scale={
+"type": "float",
+"value": 96.0
 }
 iso_shadow_strength={
 "type": "float",

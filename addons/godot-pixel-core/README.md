@@ -201,11 +201,15 @@ Registered in **Project Settings → Shader Globals**, and settable at runtime t
 | `iso_ambient_color` / `iso_ambient_energy` | Ambient level. Replaces `CanvasModulate`, which cannot be used here because it would multiply **emissive** too and stop it being the literal screen colour. |
 | `iso_yaw_rot`, `iso_cos_elevation`, `iso_sin_elevation` | Camera basis. Set together via **`IsoLightingConfig.set_camera(yaw_degrees, elevation_degrees)`**; defaults are **45° yaw, 30° elevation**, measured from the bundled art. |
 | `iso_terminator_low` / `iso_terminator_high` | The harsh terminator band. Narrow = hard wrap for dark, torch-lit scenes; widen to soften. |
+| `iso_terminator_form` | How much `N·L` shaping survives **above** the terminator. `0` gives a flat, toon-shaded lit side with no form in it; the default `0.75` keeps the hard wrap while still revealing shape. |
 | `iso_rim_power` / `iso_rim_strength` | Fresnel rim. Needs **no authored mask** — with the light behind, the pixels facing it are the ones facing away from the camera, so fresnel and `N·L` peak together at the silhouette. Keep the power low so the rim reaches inward; the true silhouette is only 1–2 px. |
 | `iso_specular_shininess` / `iso_specular_strength` | Highlight tightness and scale, against `specular.png`. |
-| `iso_height_falloff` | `0` = off. Optional correction for the limitation below. |
+| `iso_height_falloff` | `1` = on. Dims by the light's **height**, which Godot's own falloff ignores entirely. |
+| `iso_height_falloff_scale` | Height in px at which that dimming reaches half. |
 
-**Known limitation — falloff is screen-space.** `LIGHT_COLOR` arrives with the light's texture already multiplied in, sampled at the light's *screen* position, so brightness falls off with ground distance but **not with height**. Direction is fully 3D; brightness is not. This bites hardest in torch-lit scenes where lights sit close to what they light, hence `iso_height_falloff`. Doing it properly would need a per-light range, which Godot does not expose to canvas shaders.
+**Known limitation — falloff is screen-space.** `LIGHT_COLOR` arrives with the light's texture already multiplied in, sampled at the light's *screen* position. Measured consequence: raising a light from 20 px to 200 px above a surface changed its brightness **not at all**. Direction is fully 3D; Godot's own falloff is not. `iso_height_falloff` exists to cover that and is **on by default**, because a torch-lit scene reads wrong without it. Ground-distance falloff still comes from the light's texture, so its gradient is what shapes the near/far response. Doing all of it properly would need a per-light range, which Godot does not expose to canvas shaders.
+
+**`LIGHT_ENERGY` must be applied explicitly.** `LIGHT_COLOR` carries the light's colour and its texture falloff but *not* its energy — sweeping energy from 0.5 to 4.0 moved the result not at all until the shader multiplied it in. `test/iso_light_response_probe.tscn` pins this, along with the terminator transfer curve and the height falloff.
 
 **Rendering:** This addon targets **Godot 4.x** with **GL Compatibility**; `LIGHT_VERTEX`, `NORMAL` and a custom `light()` all work there. Verify in your target configuration.
 

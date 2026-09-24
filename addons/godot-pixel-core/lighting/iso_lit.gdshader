@@ -41,11 +41,13 @@ global uniform float iso_cos_elevation;     // height -> screen-Y displacement
 global uniform float iso_sin_elevation;     // ground depth -> screen-Y displacement
 global uniform float iso_terminator_low;
 global uniform float iso_terminator_high;
+global uniform float iso_terminator_form;   // 0 = flat toon lit side, 1 = full N.L shaping above the terminator
 global uniform float iso_rim_power;
 global uniform float iso_rim_strength;
 global uniform float iso_specular_shininess;
 global uniform float iso_specular_strength;
-global uniform float iso_height_falloff;    // 0 = off; see "accepted limitations" in the addon README
+global uniform float iso_height_falloff;        // 0 = off, 1 = full height-based dimming
+global uniform float iso_height_falloff_scale;  // px of height at which that dimming reaches half
 
 // Sheet frame -> light space. Pure rotation about Z, so Z passes through.
 vec3 sheet_to_light_space(vec3 n) {
@@ -102,17 +104,23 @@ void light() {
 	} else {
 		d = LIGHT_POSITION - LIGHT_VERTEX;
 		d.y *= inv_sin;
-		// Godot's falloff texture is sampled in screen space and ignores height. Optionally re-dim by
-		// the extra distance the height difference adds; matters for torches close to what they light.
-		float ground_sq = dot(d.xy, d.xy);
-		atten = mix(1.0, ground_sq / max(ground_sq + d.z * d.z, 0.0001), iso_height_falloff);
+		// Godot samples the light's falloff texture in SCREEN space, so the light's height never
+		// enters it: raising a light straight up changes its brightness not at all. This optionally
+		// re-dims by the height difference. Referenced against a scale rather than the ground
+		// distance, so a light directly overhead stays bright instead of falling to zero.
+		float k = max(iso_height_falloff_scale, 0.0001);
+		atten = mix(1.0, (k * k) / (k * k + d.z * d.z), iso_height_falloff);
 	}
 	vec3 L = normalize(d);
 
 	float ndl = dot(NORMAL, L);
 	// Harsh terminator: a narrow band instead of a soft Lambert ramp. Below it, nothing is added and
 	// the pixel falls through to pure ambient from fragment().
-	float lambert = smoothstep(iso_terminator_low, iso_terminator_high, ndl);
+	float lit = smoothstep(iso_terminator_low, iso_terminator_high, ndl);
+	// ...but a bare step flattens the lit side to one value, so all the form disappears. Keep the
+	// N.L gradient *inside* the lit region: hard cut at the terminator, shape above it.
+	float form = mix(1.0, clamp(ndl, 0.0, 1.0), iso_terminator_form);
+	float lambert = lit * form;
 
 	vec3 H = normalize(L + V);
 	float spec = pow(max(dot(NORMAL, H), 0.0), max(iso_specular_shininess, 0.001));
@@ -124,8 +132,10 @@ void light() {
 	float backlit = clamp(-dot(L, V), 0.0, 1.0);
 	float rim = fresnel * backlit * clamp(ndl, 0.0, 1.0) * iso_rim_strength;
 
-	// LIGHT_COLOR already carries the light's energy and texture falloff, so neither is applied again.
+	// LIGHT_COLOR carries the light's colour and its texture falloff, but NOT its energy -- measured,
+	// not assumed: sweeping energy 0.5 to 4.0 moved the result not at all until this was added.
 	// Emissive pixels take no light at all, which keeps them at exactly their authored colour.
-	vec3 contribution = LIGHT_COLOR.rgb * (1.0 - cov) * atten * (diffuse.rgb * lambert + vec3(spec + rim));
+	vec3 contribution = LIGHT_COLOR.rgb * LIGHT_ENERGY * (1.0 - cov) * atten
+		* (diffuse.rgb * lambert + vec3(spec + rim));
 	LIGHT = vec4(contribution, diffuse.a);
 }
