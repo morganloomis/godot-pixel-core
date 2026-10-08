@@ -1,0 +1,15 @@
+---
+description: GDScript and Godot 4.6 conventions for Pixel Core addon and test scripts
+globs: "**/*.gd"
+alwaysApply: false
+---
+
+# GDScript conventions
+
+- Follow the [official GDScript style guide](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html).
+- Native Godot first: built-in nodes, signals, resources, scenes, editor workflows.
+- Fix or suppress warnings in shipped scripts under `addons/godot-pixel-core/`.
+- **Presenter pattern**: `AnimatedEntity` is a `Node2D` with a child `Sprite2D` — do not refactor to `extends Sprite2D`.
+- **Composition over inheritance**: bodies (`CharacterBody2D`, etc.) compose presenters; keep sprite logic in presenter classes.
+- Use typed GDScript where the surrounding code does (`@export`, return types, `class_name` when registering public API).
+- Do not generate or modify art/image assets — code only.

@@ -1,0 +1,24 @@
+---
+description: Shipped addon boundaries and architecture for addons/godot-pixel-core
+globs: "addons/godot-pixel-core/**"
+alwaysApply: false
+---
+
+# Addon scope
+
+Only `addons/godot-pixel-core/` is shipped to consuming projects (e.g. git submodule). Changes here affect the public addon API.
+
+## Architecture
+
+- **Body vs presenter**: world role (physics/logic) composes a presenter; never duplicate sprite/lookup logic on bodies.
+- **AnimatedEntity**: `Node2D` + child `Sprite2D`; export `entity_name` and `use_2d_normal_lighting`.
+- **Lookup classes**: `AnimatedSpriteSheetLookup`, `StaticSpriteSheetLookup`, `TileSpriteSheetLookup` extend `SpriteSheetLookupBase`.
+- **Tiles**: `LitTileMapLayer` for lit terrain; animated lit props use scene instances (body + presenter).
+
+See `addons/godot-pixel-core/README.md` for layout conventions, per-pass PNG structure, and class overview.
+
+## Constraints
+
+- No art generation or image edits in the repo.
+- Preserve backwards compatibility for exported properties and scene node paths unless a change explicitly breaks API.
+- Legacy pseudo-lighting lives in `lighting/legacy/` and is opt-in via manual autoload — do not wire it into default paths.

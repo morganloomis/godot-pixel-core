@@ -1,0 +1,12 @@
+schema: spec-driven
+created: 2026-02-20
+
+context: |
+  Tech stack: Godot, GDScript
+  Domain: Game Development
+
+rules:
+  proposal:
+    - Keep proposals to the point and under 500 words
+    - Include a "Non-goals" section when valid
+    - Ask questions if any clarification is needed or blind spots are noticed

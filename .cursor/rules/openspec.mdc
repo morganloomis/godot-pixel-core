@@ -1,0 +1,25 @@
+---
+description: OpenSpec workflow and spec conventions for openspec/ directory
+globs: "openspec/**"
+alwaysApply: false
+---
+
+# OpenSpec in this repo
+
+- **Project context** is injected from `openspec/config.yaml` (not `project.md`).
+- **Main specs**: `openspec/specs/<capability>/spec.md`
+- **Active changes**: `openspec/changes/<change-name>/` with delta specs under `specs/`
+- **Archived changes**: `openspec/changes/archive/`
+
+## Conventions
+
+- Use Given/When/Then scenarios in spec requirements.
+- Check existing specs before creating deltas — avoid duplicating capabilities.
+- Entity features should reference presenter-vs-body composition.
+- OpenSpec is gitignored and local-only; not pushed with the addon.
+
+Use `/opsx:` commands or OpenSpec skills for propose, continue, apply, verify, and archive workflows.
+
+## After archive
+
+When a change is tested, verified, and archived successfully, ask whether to push a git update. Show `git status` first; never auto-commit or auto-push.

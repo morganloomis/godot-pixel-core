@@ -1,0 +1,23 @@
+schema: spec-driven
+
+# Lean context — injected into every OpenSpec artifact. Details live in openspec/specs/ and addons/godot-pixel-core/README.md
+context: |
+  Pixel Core: Godot 4.6 GDScript addon — isometric pre-rendered pixel-art (sprite lookup, entities, 2D lighting, player).
+  Shipped: addons/godot-pixel-core/. Test: test/. Specs: openspec/specs/.
+  Model: body (physics/logic) composes presenter (Node2D + child Sprite2D). Code-only; no art edits.
+
+rules:
+  proposal:
+    - State impact on shipped addon vs test harness vs OpenSpec docs only
+    - Note non-goals; identify affected domain (presenter, lookup, lighting, entities, tiles)
+  specs:
+    - Given/When/Then scenarios; check openspec/specs/ before new deltas
+    - Entity requirements must reference body-composes-presenter pattern
+  design:
+    - Native Godot first; verify Godot 4.6 APIs (web-search when uncertain)
+    - AnimatedEntity is Node2D + child Sprite2D, not extends Sprite2D
+    - Explain tradeoffs for Godot novices; interview when multiple approaches exist
+    - Separate addon/ from test/ paths
+  tasks:
+    - "Split by area when needed (addon/, test/, openspec/)"
+    - Code-only — no art generation or image editing
