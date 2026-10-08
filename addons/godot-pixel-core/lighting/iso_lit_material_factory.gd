@@ -73,6 +73,7 @@ static func create_material(pass_sheets: Dictionary, default_sheet_normal: Vecto
 	var material := ShaderMaterial.new()
 	material.shader = load(SHADER_PATH) as Shader
 	apply_pass_sheets(material, pass_sheets, default_sheet_normal)
+	IsoLightingConfig.track_lit_material(material)
 	return material
 
 
@@ -85,3 +86,4 @@ static func apply_pass_sheets(material: ShaderMaterial, pass_sheets: Dictionary,
 		if tex == null or tex.get_width() <= 0:
 			tex = _fallback_for(sheet_pass, default_sheet_normal)
 		material.set_shader_parameter(PASS_UNIFORMS[sheet_pass], tex)
+	IsoLightingConfig.track_lit_material(material)

@@ -32,6 +32,10 @@ extends Sprite2D
 var _presenter: AnimatedEntity = null
 var _material: ShaderMaterial = null
 var _bound_key: String = ""
+var _field_atlas: Texture2D = null
+var _field_region: Vector4 = Vector4()
+var _field_sheet: Vector2 = Vector2.ONE
+var _field_cell: Vector2 = Vector2.ONE
 
 const SHADER_PATH := "res://addons/godot-pixel-core/lighting/iso_shadow.gdshader"
 
@@ -45,6 +49,27 @@ static func _ensure_quad_texture() -> ImageTexture:
 		img.fill(Color.WHITE)
 		_quad_texture = ImageTexture.create_from_image(img)
 	return _quad_texture
+
+
+func _enter_tree() -> void:
+	IsoLightingConfig.register_shadow_caster(self)
+
+
+func _exit_tree() -> void:
+	IsoLightingConfig.unregister_shadow_caster(self)
+
+
+## Occupancy field this node is currently casting, or an empty dict when hidden / unbound.
+func caster_snapshot() -> Dictionary:
+	if not visible or _field_atlas == null or _field_cell.x <= 0.0:
+		return {}
+	return {
+		"tex": _field_atlas,
+		"origin": global_position,
+		"cell": _field_cell,
+		"region": _field_region,
+		"sheet": _field_sheet,
+	}
 
 
 func _ready() -> void:
@@ -79,10 +104,14 @@ func _apply_extent() -> void:
 func _update_shadow() -> void:
 	if _presenter == null or _material == null:
 		visible = false
+		_field_atlas = null
+		IsoLightingConfig.publish_shadow_casters()
 		return
 	var lookup := _presenter.sprite_lookup
 	if not (lookup is SpriteSheetLookupBase):
 		visible = false
+		_field_atlas = null
+		IsoLightingConfig.publish_shadow_casters()
 		return
 	var slb := lookup as SpriteSheetLookupBase
 	var eid := _presenter.entity_name if _presenter.entity_name != "" else _presenter.name
@@ -93,6 +122,8 @@ func _update_shadow() -> void:
 	)
 	if cell == null or cell.atlas == null or cell.region.size.x <= 0.0:
 		visible = false
+		_field_atlas = null
+		IsoLightingConfig.publish_shadow_casters()
 		return
 	visible = true
 
@@ -106,8 +137,12 @@ func _update_shadow() -> void:
 		_bound_key = key
 
 	var region := cell.region
+	_field_atlas = cell.atlas
+	_field_cell = region.size
+	_field_region = Vector4(region.position.x, region.position.y, region.size.x, region.size.y)
+	_field_sheet = Vector2(cell.atlas.get_width(), cell.atlas.get_height())
 	_material.set_shader_parameter(
-		"field_region", Vector4(region.position.x, region.position.y, region.size.x, region.size.y)
+		"field_region", _field_region
 	)
 	# The field cell frames exactly the same ground area as the diffuse cell, so the quad must be
 	# concentric with the presenter's drawable, then scaled out about that centre.
@@ -117,3 +152,4 @@ func _update_shadow() -> void:
 	var quad := region.size * field_extent
 	scale = quad / Vector2(maxf(texture.get_width(), 1.0), maxf(texture.get_height(), 1.0))
 	_material.set_shader_parameter("quad_size_px", quad)
+	IsoLightingConfig.publish_shadow_casters()

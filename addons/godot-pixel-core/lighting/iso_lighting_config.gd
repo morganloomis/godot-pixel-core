@@ -35,6 +35,12 @@ const SHADOW_STRENGTH := "iso_shadow_strength"
 const SHADOW_SOFTNESS := "iso_shadow_softness"
 const SHADOW_MAX_LENGTH := "iso_shadow_max_length"
 
+## How many occupancy fields [code]iso_lit[/code] can march at once. Nearby casters fill the slots;
+## extras are dropped. Raised receive, not a new art channel.
+const SHADOW_CASTER_SLOTS := 4
+## Origins within this many screen px of [code]shadow_self_origin[/code] are the receiver itself.
+const SHADOW_SELF_EPS_PX := 2.0
+
 ## Real yaw of the sprite camera. Measured from the production character .blend: the camera sits on
 ## the -Y axis looking +Y, so its yaw is zero; the eight facings come from rotating the character.
 const DEFAULT_YAW_DEGREES := 0.0
@@ -97,6 +103,11 @@ static var _globals_ensured: bool = false
 static var _yaw_rot: Vector2 = Vector2(0.7071068, 0.7071068)
 static var _cos_elevation: float = 0.8660254
 static var _sin_elevation: float = 0.5
+static var _empty_field_tex: ImageTexture
+static var _caster_nodes: Array = []
+static var _manual_casters: Array = []
+static var _caster_snapshot: Array = []
+static var _lit_materials: Array = []
 
 
 static func _project_global_value(gname: String, fallback: Variant) -> Variant:
@@ -169,6 +180,116 @@ static func set_ambient(color: Color, energy: float = 1.0) -> void:
 	ensure_globals()
 	set_global(AMBIENT_COLOR, color)
 	set_global(AMBIENT_ENERGY, energy)
+
+
+static func _empty_field_texture() -> ImageTexture:
+	if _empty_field_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color(0, 0, 0, 0))
+		_empty_field_tex = ImageTexture.create_from_image(img)
+	return _empty_field_tex
+
+
+## Live [IsoGroundShadow] nodes. Hidden or field-less nodes stay registered but do not fill a slot.
+static func register_shadow_caster(node: Node) -> void:
+	if node == null or _caster_nodes.has(node):
+		return
+	_caster_nodes.append(node)
+
+
+static func unregister_shadow_caster(node: Node) -> void:
+	_caster_nodes.erase(node)
+	publish_shadow_casters()
+
+
+## Probe/test override. Each entry is [code]{tex, origin, cell, region, sheet}[/code].
+static func set_manual_shadow_casters(casters: Array) -> void:
+	_manual_casters = casters.duplicate()
+	publish_shadow_casters()
+
+
+static func clear_manual_shadow_casters() -> void:
+	_manual_casters.clear()
+	publish_shadow_casters()
+
+
+static func published_shadow_caster_count() -> int:
+	return _caster_snapshot.size()
+
+
+static func track_lit_material(material: ShaderMaterial) -> void:
+	if material == null:
+		return
+	_prune_lit_materials()
+	for wr in _lit_materials:
+		if wr is WeakRef and (wr as WeakRef).get_ref() == material:
+			apply_shadow_casters(material)
+			return
+	_lit_materials.append(weakref(material))
+	apply_shadow_casters(material)
+
+
+static func _prune_lit_materials() -> void:
+	var kept: Array = []
+	for wr in _lit_materials:
+		if wr is WeakRef and (wr as WeakRef).get_ref() != null:
+			kept.append(wr)
+	_lit_materials = kept
+
+
+static func _collect_casters() -> Array:
+	var live: Array = []
+	for node in _caster_nodes:
+		if node != null and is_instance_valid(node):
+			live.append(node)
+	_caster_nodes = live
+	var out: Array = []
+	for item in _manual_casters:
+		if item is Dictionary and (item as Dictionary).get("tex") != null:
+			out.append(item)
+			if out.size() >= SHADOW_CASTER_SLOTS:
+				return out
+	for node in _caster_nodes:
+		if not node.has_method("caster_snapshot"):
+			continue
+		var snap: Variant = node.call("caster_snapshot")
+		if snap is Dictionary and not (snap as Dictionary).is_empty():
+			out.append(snap)
+			if out.size() >= SHADOW_CASTER_SLOTS:
+				return out
+	return out
+
+
+## Rebuild the four-slot snapshot and write it onto every tracked lit material.
+static func publish_shadow_casters() -> void:
+	ensure_globals()
+	_caster_snapshot = _collect_casters()
+	_prune_lit_materials()
+	for wr in _lit_materials:
+		var mat: Variant = (wr as WeakRef).get_ref() if wr is WeakRef else null
+		if mat is ShaderMaterial:
+			apply_shadow_casters(mat)
+
+
+static func apply_shadow_casters(material: ShaderMaterial) -> void:
+	if material == null:
+		return
+	var empty := _empty_field_texture()
+	for i in SHADOW_CASTER_SLOTS:
+		if i < _caster_snapshot.size():
+			var c: Dictionary = _caster_snapshot[i]
+			material.set_shader_parameter("shadow_caster_tex_%d" % i, c.get("tex", empty))
+			material.set_shader_parameter("shadow_caster_origin_%d" % i, c.get("origin", Vector2.ZERO))
+			material.set_shader_parameter("shadow_caster_cell_%d" % i, c.get("cell", Vector2.ONE))
+			material.set_shader_parameter("shadow_caster_region_%d" % i, c.get("region", Vector4(0, 0, 1, 1)))
+			material.set_shader_parameter("shadow_caster_sheet_%d" % i, c.get("sheet", Vector2.ONE))
+		else:
+			material.set_shader_parameter("shadow_caster_tex_%d" % i, empty)
+			material.set_shader_parameter("shadow_caster_origin_%d" % i, Vector2(1.0e20, 1.0e20))
+			material.set_shader_parameter("shadow_caster_cell_%d" % i, Vector2.ONE)
+			material.set_shader_parameter("shadow_caster_region_%d" % i, Vector4(0, 0, 1, 1))
+			material.set_shader_parameter("shadow_caster_sheet_%d" % i, Vector2.ONE)
+	material.set_shader_parameter("shadow_caster_count", float(_caster_snapshot.size()))
 
 
 ## Sheet-frame normal pointing straight at the camera: the right fallback for a sprite with no
