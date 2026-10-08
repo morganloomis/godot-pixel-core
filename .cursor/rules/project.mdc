@@ -1,0 +1,12 @@
+---
+description: Pixel Core essentials for general coding sessions
+alwaysApply: true
+---
+
+# Pixel Core
+
+Godot 4.6 addon for isometric pre-rendered pixel-art. Shipped code: `addons/godot-pixel-core/`. Full architecture: `addons/godot-pixel-core/README.md`.
+
+- **Teach Me**: explain for Godot novices; interview when multiple solutions exist.
+- **Research first**: verify APIs against official Godot 4.6 docs before committing.
+- **Code only** — do not generate or modify art/images.

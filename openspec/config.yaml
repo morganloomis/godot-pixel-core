@@ -1,20 +1,25 @@
 schema: spec-driven
 
+# Lean context — injected into every OpenSpec artifact. Details live in openspec/specs/ and addons/godot-pixel-core/README.md
 context: |
-  Godot 4.6 addon (GL Compatibility) for isometric pre-rendered pixel art.
-  Lighting lives in addons/godot-pixel-core/lighting/: iso_lit.gdshader for
-  surfaces, iso_shadow.gdshader for ground quads, IsoLightingConfig for
-  global look knobs. No SpriteLighting autoload; values are shader globals.
+  Pixel Core: Godot 4.6 GDScript addon — isometric pre-rendered pixel-art (sprite lookup, entities, 2D lighting, player).
+  Shipped: addons/godot-pixel-core/. Test: test/. Specs: openspec/specs/.
+  Model: body (physics/logic) composes presenter (Node2D + child Sprite2D). Code-only; no art edits.
+  Lighting: iso_lit surfaces + iso_shadow ground quads. shadow_map.png is a ground occupancy field
+  (R = bottom, G = top, A = coverage), not a silhouette or facing map.
 
-  shadow_map.png is a ground-plane occupancy field, not a silhouette:
-  R = bottom, G = top (1 step = 1 px), A = coverage. IsoGroundShadow draws
-  a blend_sub quad on the floor and ray-marches that field toward each light.
-
-  Receivers already have height.png (R = height above ground, 1 step = 1 px)
-  and world-space normal.png. iso_lit writes LIGHT_VERTEX as
-  (ground_xy, height). Do not add a facing or screen-height channel to the
-  shadow map.
-
-  Tests are scene probes under test/ that print PROBE_* lines and quit.
-
-  Keep pixel-art nearest filtering. Prefer measured probes over visual-only checks.
+rules:
+  proposal:
+    - State impact on shipped addon vs test harness vs OpenSpec docs only
+    - Note non-goals; identify affected domain (presenter, lookup, lighting, entities, tiles)
+  specs:
+    - Given/When/Then scenarios; check openspec/specs/ before new deltas
+    - Entity requirements must reference body-composes-presenter pattern
+  design:
+    - Native Godot first; verify Godot 4.6 APIs (web-search when uncertain)
+    - AnimatedEntity is Node2D + child Sprite2D, not extends Sprite2D
+    - Explain tradeoffs for Godot novices; interview when multiple approaches exist
+    - Separate addon/ from test/ paths
+  tasks:
+    - "Split by area when needed (addon/, test/, openspec/)"
+    - Code-only — no art generation or image editing
