@@ -171,16 +171,18 @@ func _shadow_run(shot: Image, dir: int) -> int:
 	return run
 
 
-## The bundled test art has no shadow_map.png, so the node must hide itself rather than error.
+## An entity with no shadow_map.png must hide the quad rather than error or occupy a caster slot.
 func _check_node_without_sheet() -> void:
 	var scene: PackedScene = load("res://addons/godot-pixel-core/entity/animated_entity.tscn")
 	var presenter := scene.instantiate() as AnimatedEntity
 	presenter.sprite_lookup = AnimatedSpriteSheetLookup.new()
 	(presenter.sprite_lookup as SpriteSheetLookupBase).animated_sheet_root = "res://test/art/sprite/"
-	presenter.entity_name = "player"
+	presenter.entity_name = "missing_entity_for_probe"
 	add_child(presenter)
 	var shadow := IsoGroundShadow.new()
 	add_child(shadow)
 	shadow.presenter = shadow.get_path_to(presenter)
-	print("PROBE node without shadow_map.png: visible=%s  verdict=%s"
-		% [shadow.visible, "DEGRADES CLEANLY" if not shadow.visible else "SHOULD BE HIDDEN"])
+	IsoLightingConfig.publish_shadow_casters()
+	print("PROBE node without shadow_map.png: visible=%s casters=%d  verdict=%s"
+		% [shadow.visible, IsoLightingConfig.published_shadow_caster_count(),
+		   "DEGRADES CLEANLY" if not shadow.visible else "SHOULD BE HIDDEN"])
