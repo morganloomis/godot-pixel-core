@@ -16,7 +16,7 @@ alwaysApply: false
 - Use Given/When/Then scenarios in spec requirements.
 - Check existing specs before creating deltas — avoid duplicating capabilities.
 - Entity features should reference presenter-vs-body composition.
-- OpenSpec is gitignored and local-only; not pushed with the addon.
+- OpenSpec is tracked in this repo; it is not part of the distributed addon.
 
 Use `/opsx:` commands or OpenSpec skills for propose, continue, apply, verify, and archive workflows.
 
