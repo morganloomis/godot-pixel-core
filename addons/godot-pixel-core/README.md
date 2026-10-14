@@ -192,6 +192,23 @@ reached its full 329 px at `7`.
 **Cost:** 8 rays x 24 steps, so up to 192 texture fetches per shadowed pixel per light. That is the
 main reason to keep the quad only as large as the shadows actually need.
 
+### Shadows on walls and vertical props
+
+The same occupancy field is enough. A wall or crate already has `height.png` and
+`iso_lit` already writes that into `LIGHT_VERTEX`. Raised fragments (height ≥ 1 px) march published
+caster fields from that point: `ray_height = mix(receiver_height, light_height, s)`. No third
+`shadow_map.png` channel and no facing colour — receiver facing is `normal.png`, caster occupancy
+is still `[bottom, top]`.
+
+`IsoGroundShadow` publishes up to four visible fields onto live lit materials. A presenter writes
+`shadow_self_origin` so it does not flatten itself. Height-0 fragments stay on the ground quad, so
+floors are not marched twice.
+
+Measured by `test/iso_wall_shadow_probe.tscn` against the same 40 px cylinder the floor probe uses:
+a raised receiver beyond the caster goes dark below the analytic tip (~23 px for a light 80 px up
+and 150 px away) and stays lit above it; a height-0 quad is not darkened by the receive path; a
+matching self origin skips the field.
+
 ### Project-wide knobs (global shader parameters)
 
 Registered in **Project Settings → Shader Globals**, and settable at runtime through **`IsoLightingConfig`** without re-rendering any art. `IsoLightingConfig.ensure_globals()` registers any that are missing, which consumers of this addon need on first run.

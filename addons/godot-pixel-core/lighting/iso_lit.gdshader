@@ -48,6 +48,39 @@ global uniform float iso_specular_shininess;
 global uniform float iso_specular_strength;
 global uniform float iso_height_falloff;        // 0 = off, 1 = full height-based dimming
 global uniform float iso_height_falloff_scale;  // px of height at which that dimming reaches half
+global uniform float iso_shadow_strength;
+global uniform float iso_shadow_softness;
+global uniform float iso_shadow_max_length;
+
+// Published occupancy fields from IsoGroundShadow (R=bottom, G=top, A=coverage). Four slots.
+uniform float shadow_caster_count = 0.0;
+uniform sampler2D shadow_caster_tex_0 : filter_nearest, repeat_disable;
+uniform sampler2D shadow_caster_tex_1 : filter_nearest, repeat_disable;
+uniform sampler2D shadow_caster_tex_2 : filter_nearest, repeat_disable;
+uniform sampler2D shadow_caster_tex_3 : filter_nearest, repeat_disable;
+uniform vec2 shadow_caster_origin_0 = vec2(0.0);
+uniform vec2 shadow_caster_origin_1 = vec2(0.0);
+uniform vec2 shadow_caster_origin_2 = vec2(0.0);
+uniform vec2 shadow_caster_origin_3 = vec2(0.0);
+uniform vec2 shadow_caster_cell_0 = vec2(1.0);
+uniform vec2 shadow_caster_cell_1 = vec2(1.0);
+uniform vec2 shadow_caster_cell_2 = vec2(1.0);
+uniform vec2 shadow_caster_cell_3 = vec2(1.0);
+uniform vec4 shadow_caster_region_0 = vec4(0.0, 0.0, 1.0, 1.0);
+uniform vec4 shadow_caster_region_1 = vec4(0.0, 0.0, 1.0, 1.0);
+uniform vec4 shadow_caster_region_2 = vec4(0.0, 0.0, 1.0, 1.0);
+uniform vec4 shadow_caster_region_3 = vec4(0.0, 0.0, 1.0, 1.0);
+uniform vec2 shadow_caster_sheet_0 = vec2(1.0);
+uniform vec2 shadow_caster_sheet_1 = vec2(1.0);
+uniform vec2 shadow_caster_sheet_2 = vec2(1.0);
+uniform vec2 shadow_caster_sheet_3 = vec2(1.0);
+// Ground origin of this drawable; a caster parked here is this receiver and must not flatten it.
+uniform vec2 shadow_self_origin = vec2(1.0e20, 1.0e20);
+
+const int SHADOW_RAYS = 8;
+const int SHADOW_STEPS = 24;
+const float GOLDEN_ANGLE = 2.39996323;
+const float SHADOW_SELF_EPS = 2.0;
 
 // Sheet frame -> light space. Pure rotation about Z, so Z passes through.
 vec3 sheet_to_light_space(vec3 n) {
@@ -64,6 +97,70 @@ float emissive_coverage(vec3 em) {
 // Toward the viewer, in light space. Constant because the camera is orthographic.
 vec3 view_dir() {
 	return vec3(0.0, iso_cos_elevation, iso_sin_elevation);
+}
+
+// Same slab test the ground quad uses: does [bottom, top] contain the ray height at this ground point?
+float caster_ray_blocked(sampler2D tex, vec2 origin, vec2 cell, vec4 region, vec2 sheet,
+		vec2 frag_ground, vec2 to_light, float start_h, float light_h) {
+	if (distance(origin, shadow_self_origin) < SHADOW_SELF_EPS) {
+		return 0.0;
+	}
+	vec2 ab = to_light;
+	float denom = max(dot(ab, ab), 0.0001);
+	float t = clamp(dot(origin - frag_ground, ab) / denom, 0.0, 1.0);
+	vec2 closest = frag_ground + ab * t;
+	vec2 pad = cell * 0.5 + vec2(iso_shadow_softness + 2.0);
+	vec2 d = abs(closest - origin);
+	if (d.x > pad.x || d.y > pad.y) {
+		return 0.0;
+	}
+	float dist = max(length(to_light), 0.001);
+	float s_max = min(1.0, iso_shadow_max_length / dist);
+	vec2 cell_safe = max(cell, vec2(0.0001));
+	vec2 sheet_safe = max(sheet, vec2(0.0001));
+	for (int i = 1; i <= SHADOW_STEPS; i++) {
+		float s = s_max * float(i) / float(SHADOW_STEPS);
+		float ray_h = mix(start_h, light_h, s);
+		vec2 cell_uv = (frag_ground + to_light * s - origin) / cell_safe + 0.5;
+		if (cell_uv.x < 0.0 || cell_uv.x > 1.0 || cell_uv.y < 0.0 || cell_uv.y > 1.0) {
+			continue;
+		}
+		vec4 field = texture(tex, (region.xy + cell_uv * region.zw) / sheet_safe);
+		if (field.a < 0.5) {
+			continue;
+		}
+		float bottom = field.r * 255.0;
+		float top = field.g * 255.0;
+		if (ray_h >= bottom && ray_h <= top) {
+			return 1.0;
+		}
+	}
+	return 0.0;
+}
+
+float occupancy_along_ray(vec2 frag_ground, vec2 to_light, float start_h, float light_h) {
+	float blocked = 0.0;
+	if (shadow_caster_count > 0.5) {
+		blocked = max(blocked, caster_ray_blocked(shadow_caster_tex_0, shadow_caster_origin_0,
+			shadow_caster_cell_0, shadow_caster_region_0, shadow_caster_sheet_0,
+			frag_ground, to_light, start_h, light_h));
+	}
+	if (shadow_caster_count > 1.5) {
+		blocked = max(blocked, caster_ray_blocked(shadow_caster_tex_1, shadow_caster_origin_1,
+			shadow_caster_cell_1, shadow_caster_region_1, shadow_caster_sheet_1,
+			frag_ground, to_light, start_h, light_h));
+	}
+	if (shadow_caster_count > 2.5) {
+		blocked = max(blocked, caster_ray_blocked(shadow_caster_tex_2, shadow_caster_origin_2,
+			shadow_caster_cell_2, shadow_caster_region_2, shadow_caster_sheet_2,
+			frag_ground, to_light, start_h, light_h));
+	}
+	if (shadow_caster_count > 3.5) {
+		blocked = max(blocked, caster_ray_blocked(shadow_caster_tex_3, shadow_caster_origin_3,
+			shadow_caster_cell_3, shadow_caster_region_3, shadow_caster_sheet_3,
+			frag_ground, to_light, start_h, light_h));
+	}
+	return blocked;
 }
 
 void fragment() {
@@ -137,5 +234,39 @@ void light() {
 	// Emissive pixels take no light at all, which keeps them at exactly their authored colour.
 	vec3 contribution = LIGHT_COLOR.rgb * LIGHT_ENERGY * (1.0 - cov) * atten
 		* (diffuse.rgb * lambert + vec3(spec + rim));
+
+	// Raised receive: same occupancy slab as the ground quad, but the ray starts at this
+	// fragment's height. Height-0 stays on IsoGroundShadow so floors are not marched twice.
+	float receiver_h = LIGHT_VERTEX.z;
+	if (receiver_h >= 0.5 && shadow_caster_count > 0.5) {
+		vec2 frag_ground = LIGHT_VERTEX.xy;
+		vec2 to_shadow_light;
+		float shadow_light_h;
+		if (LIGHT_IS_DIRECTIONAL) {
+			float inv_sin_dir = 1.0 / max(iso_sin_elevation, 0.0001);
+			vec3 world_dir = normalize(vec3(LIGHT_DIRECTION.x, LIGHT_DIRECTION.y * inv_sin_dir, LIGHT_DIRECTION.z));
+			vec2 ground_dir = world_dir.xy;
+			float ground_len = max(length(ground_dir), 0.0001);
+			float reach = iso_shadow_max_length;
+			vec2 world_offset = normalize(ground_dir) * reach;
+			to_shadow_light = vec2(world_offset.x, world_offset.y * iso_sin_elevation);
+			shadow_light_h = reach * world_dir.z / ground_len;
+		} else {
+			to_shadow_light = LIGHT_POSITION.xy - frag_ground;
+			shadow_light_h = LIGHT_POSITION.z;
+		}
+		float occ = 0.0;
+		if (shadow_light_h > 0.0) {
+			for (int r = 0; r < SHADOW_RAYS; r++) {
+				float radius = sqrt((float(r) + 0.5) / float(SHADOW_RAYS)) * iso_shadow_softness;
+				float angle = float(r) * GOLDEN_ANGLE;
+				vec2 jitter = vec2(cos(angle), sin(angle)) * radius;
+				occ += occupancy_along_ray(frag_ground, to_shadow_light + jitter, receiver_h, shadow_light_h);
+			}
+			occ /= float(SHADOW_RAYS);
+		}
+		contribution *= 1.0 - occ * iso_shadow_strength;
+	}
+
 	LIGHT = vec4(contribution, diffuse.a);
 }

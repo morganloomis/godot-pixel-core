@@ -98,6 +98,21 @@ static var _LIT_PASSES: Array = [
 ]
 
 
+func _process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	_write_shadow_self_origin()
+
+
+func _write_shadow_self_origin() -> void:
+	if _lit_material == null or sprite == null:
+		return
+	_lit_material.set_shader_parameter(
+		"shadow_self_origin",
+		sprite.global_position + sprite.offset * sprite.global_scale
+	)
+
+
 func _ready() -> void:
 	_apply_2d_normal_lighting_setup()
 	if sprite_lookup == null:
@@ -189,11 +204,13 @@ func _apply_2d_normal_lighting_setup() -> void:
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		# The material needs the action's sheets, so it is bound in update_sprite(); in the editor the
 		# preview stays diffuse-only and no material is assigned.
+		set_process(not Engine.is_editor_hint())
 	else:
 		sprite.material = null
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_PARENT_NODE
 		_lit_material = null
 		_lit_bound_key = ""
+		set_process(false)
 
 
 ## Binds whole pass sheets for [param eid] / [param action_name]. No-op while the action is unchanged,
@@ -217,6 +234,7 @@ func _bind_lit_pass_sheets(eid: String, action_name: String) -> void:
 		IsoLitMaterialFactory.apply_pass_sheets(_lit_material, sheets, fallback_normal)
 	sprite.material = _lit_material
 	_lit_bound_key = key
+	_write_shadow_self_origin()
 
 
 func update_sprite() -> void:

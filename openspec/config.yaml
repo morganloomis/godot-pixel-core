@@ -5,6 +5,8 @@ context: |
   Pixel Core: Godot 4.6 GDScript addon — isometric pre-rendered pixel-art (sprite lookup, entities, 2D lighting, player).
   Shipped: addons/godot-pixel-core/. Test: test/. Specs: openspec/specs/.
   Model: body (physics/logic) composes presenter (Node2D + child Sprite2D). Code-only; no art edits.
+  Lighting: iso_lit surfaces + iso_shadow ground quads. shadow_map.png is a ground occupancy field
+  (R = bottom, G = top, A = coverage), not a silhouette or facing map.
 
 rules:
   proposal:
