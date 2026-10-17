@@ -53,6 +53,24 @@ var speed: float:
 			return animated_entity.movement_speed
 		return _movement_speed
 
+const _ISO_DIAG_Y_RATIO := 0.5
+
+
+func remap_input_to_screen(input: Vector2) -> Vector2:
+	if input.length_squared() <= 0.001:
+		return Vector2.ZERO
+	if absf(input.y) <= 0.001:
+		return Vector2(signf(input.x), 0.0)
+	if absf(input.x) <= 0.001:
+		return Vector2(0.0, signf(input.y))
+	return Vector2(signf(input.x), signf(input.y) * _ISO_DIAG_Y_RATIO).normalized()
+
+
+func _vector_to_direction(v: Vector2) -> String:
+	var rot := fposmod(PI / 2.0 - v.angle(), TAU)
+	var idx := int(round(rot / (PI / 4.0))) % 8
+	return SpriteSheetLookupBase.DIRECTIONS[idx]
+
 
 func _ready() -> void:
 	# Avoid overwriting a child-authored entity_name when the root export was left empty.

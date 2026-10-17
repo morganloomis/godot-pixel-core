@@ -2,13 +2,10 @@
 
 [ext_resource type="Script" uid="uid://diefqs7falom5" path="res://addons/godot-pixel-core/entity/animated_entity.gd" id="1_script"]
 
-[sub_resource type="CanvasTexture" id="CanvasTexture_r62yd"]
-
 [node name="AnimatedEntity" type="Node2D" unique_id=435485261]
 script = ExtResource("1_script")
 use_2d_normal_lighting = false
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=2007099151]
-texture = SubResource("CanvasTexture_r62yd")
 
 [node name="Timer" type="Timer" parent="." unique_id=2085097802]
