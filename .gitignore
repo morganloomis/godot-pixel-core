@@ -16,3 +16,6 @@ data_*/
 mono_crash.*.json
 
 .cursor/rules/local-dev.mdc
+
+# JetBrains IDE settings
+.idea/
